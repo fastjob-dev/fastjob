@@ -1,18 +1,18 @@
 # FastJob
 
-**A simple, reliable job queue for Python**
+**The job queue with the most beautiful API in Python**
 
-FastJob is a background job library I built for Python developers who want something that just works. It uses PostgreSQL for persistence and embraces Python's async/await syntax. Think of it as Sidekiq for Python, but designed from the ground up for async.
+FastJob is a background job library I built for developers who believe code should be elegant, not just functional. It uses PostgreSQL for rock-solid persistence and embraces Python's async/await syntax with APIs that make you smile while you write them.
 
-## Why FastJob?
+## Why FastJob is Different
 
-I was tired of complicated job queues that required Redis clusters or had confusing APIs. FastJob is different:
+I was tired of job queues that felt like work to use. FastJob is different - every API is designed to be intuitive, powerful, and genuinely enjoyable:
 
-- **Dead simple** - Decorate a function, call `enqueue()`, done
-- **Uses PostgreSQL** - One less service to manage and monitor
-- **Async native** - Built for modern Python 3.10+
-- **Type safe** - Pydantic validation keeps your jobs clean
-- **Great DX** - Embedded worker for dev, CLI for production
+- **Gorgeous APIs** - From `@fastjob.job()` to fluent scheduling, everything reads like natural language
+- **Zero Infrastructure** - Uses PostgreSQL (which you already have) instead of Redis/RabbitMQ complexity
+- **Async Native** - Built for modern Python 3.10+ with proper async/await throughout
+- **Type Safe** - Pydantic integration keeps your jobs bulletproof
+- **Incredible DX** - Embedded worker for development, production-ready CLI, job introspection that actually helps
 
 ## Installation
 
@@ -30,94 +30,139 @@ export FASTJOB_DATABASE_URL="postgresql://user:password@localhost/my_app_jobs"
 fastjob migrate
 ```
 
-### Write some jobs
+### The Most Beautiful Job Queue API You'll Ever Use
 
 ```python
 import fastjob
 
+# Define jobs with the simplest decorator imaginable
 @fastjob.job()
 async def send_welcome_email(user_email: str, name: str):
-    # Your email logic here
     print(f"Sending welcome email to {name} at {user_email}")
+    # Your email logic here
 
 @fastjob.job(retries=5, queue="critical")
 async def process_payment(order_id: int, amount: float):
-    # Your payment processing logic
     print(f"Processing ${amount} for order {order_id}")
-```
+    # Your payment processing logic
 
-### Queue them up
-
-```python
-# Queue a job
+# Enqueue jobs with natural, readable syntax
 job_id = await fastjob.enqueue(
     send_welcome_email,
     user_email="alice@example.com",
     name="Alice"
 )
 
-# Queue with priority (lower number = higher priority)
+# Priority jobs? Just as elegant
 urgent_job = await fastjob.enqueue(
     process_payment,
-    priority=1,
+    priority=1,  # Lower = higher priority
     order_id=12345,
     amount=99.99
 )
+
+# Schedule jobs for later with beautiful timing APIs
+await fastjob.schedule_at(
+    send_welcome_email,
+    when=datetime(2025, 12, 25, 9, 0),  # Christmas morning
+    user_email="santa@northpole.com",
+    name="Santa"
+)
+
+await fastjob.schedule_in(
+    process_payment,
+    seconds=3600,  # One hour from now
+    order_id=54321,
+    amount=149.99
+)
 ```
 
-### Process jobs
+### The Development Experience You've Been Waiting For
 
-**For development:**
+**🎯 IMPORTANT: Your job code is identical between development and production** - only worker startup differs!
+
+**Local Development (No Additional Processes):**
 ```python
-# This runs jobs in your main process
+# Add this to your FastAPI/Django/Flask app startup
 fastjob.start_embedded_worker()
+
+# That's it! Jobs now run in your web server process
+# Same job definitions, same enqueuing code, same everything
 ```
 
-**For production:**
+**Production (Rock-Solid Worker Processes):**
 ```bash
-# This runs as a separate worker process
-fastjob run-worker --concurrency 4
+# Your app runs normally (without embedded worker)
+python -m uvicorn main:app
+
+# Separate process runs the workers - same job code!
+fastjob run-worker --concurrency 4 --queues default,critical
 ```
 
-## Real-world example
+**🔑 Key Point**: Your `@fastjob.job()` functions and `await fastjob.enqueue()` calls are **exactly the same** in both environments. Only the worker startup changes.
 
-Here's how I use FastJob in a typical web app:
+## Real-world example: Same code, works everywhere
+
+Here's how I use FastJob in a typical web app - **this exact code works in both development and production**:
 
 ```python
 from fastapi import FastAPI
 import fastjob
+import os
 
 app = FastAPI()
 
+# ✅ These job definitions are IDENTICAL everywhere
 @fastjob.job(retries=3)
 async def resize_uploaded_image(user_id: int, image_path: str):
     # Resize image, upload to CDN, update database
+    # This exact function works in development AND production
     pass
 
 @fastjob.job(queue="emails", retries=2)
 async def send_notification(user_id: int, message: str):
     # Send push notification or email
+    # This exact function works in development AND production
     pass
 
+# ✅ This API endpoint is IDENTICAL everywhere
 @app.post("/upload-photo/")
 async def upload_photo(user_id: int, image_data: bytes):
     # Save the raw image
     image_path = save_image(image_data)
-    
-    # Queue background processing
+
+    # This enqueuing code is IDENTICAL in development and production
     await fastjob.enqueue(resize_uploaded_image, user_id=user_id, image_path=image_path)
-    
+
     return {"status": "uploaded", "processing": "queued"}
 
+# 🔄 Only this startup code differs based on environment
 @app.on_event("startup")
 async def startup():
-    if app.debug:
-        fastjob.start_embedded_worker()  # For development
+    if os.getenv("ENVIRONMENT") == "development":
+        fastjob.start_embedded_worker()  # Development: embedded worker
+    # Production: external workers handle jobs automatically
 
 @app.on_event("shutdown")
 async def shutdown():
-    await fastjob.stop_embedded_worker()
+    if os.getenv("ENVIRONMENT") == "development":
+        await fastjob.stop_embedded_worker()
 ```
+
+**Development deployment:**
+```bash
+export ENVIRONMENT=development
+python -m uvicorn main:app --reload  # Worker runs inside your app
+```
+
+**Production deployment:**
+```bash
+export ENVIRONMENT=production
+python -m uvicorn main:app           # App runs normally
+fastjob run-worker --concurrency 4   # Workers run separately
+```
+
+**🎯 The key insight**: Your business logic never changes. Only worker management differs.
 
 ## Advanced features
 
@@ -172,6 +217,58 @@ await fastjob.schedule_in(
 )
 ```
 
+### Job introspection that actually helps
+
+```python
+# Check on your jobs like a pro
+status = await fastjob.get_job_status(job_id)
+print(f"Job {job_id} is {status}")
+
+# Cancel jobs that haven't started yet
+cancelled = await fastjob.cancel_job(job_id)
+
+# Retry failed jobs
+retried = await fastjob.retry_job(job_id)
+
+# Get job insights
+jobs = await fastjob.list_jobs(status="failed", limit=10)
+stats = await fastjob.get_queue_stats()
+```
+
+## 🚀 Ready for More? Upgrade to FastJob Pro
+
+The free version handles 90% of use cases beautifully. But when you need **recurring jobs**, **advanced scheduling**, and a **web dashboard**, FastJob Pro takes the same elegant APIs to the next level:
+
+```python
+# Recurring jobs with the same beautiful API
+import fastjob  # Same import - zero code changes needed!
+
+# Cron-style scheduling that feels natural
+fastjob.schedule("*/15 * * * *").job(check_system_health)
+fastjob.schedule("0 9 * * 1-5").job(send_daily_report)
+
+# Human-readable scheduling
+fastjob.every("10m").do(cleanup_temp_files)
+fastjob.every("1h").do(process_analytics)
+
+# Fluent advanced scheduling
+await fastjob.schedule_job(generate_report)\
+    .next_monday()\
+    .at_time("09:00")\
+    .with_priority(1)\
+    .enqueue(report_type="weekly")
+
+# Start the scheduler (one line!)
+await fastjob.start_recurring_scheduler()
+
+# Built-in dashboard
+fastjob dashboard  # Opens at http://localhost:6161
+```
+
+**Migration from Free to Pro**: Literally just `pip install fastjob-pro` and you're done. Zero code changes required.
+
+Learn more at [FastJob Pro](https://github.com/abhinavs/fastjob-pro)
+
 ## Configuration
 
 FastJob is configured via environment variables:
@@ -185,7 +282,39 @@ export FASTJOB_JOBS_MODULE="myapp.jobs"
 
 # Optional: Logging level
 export FASTJOB_LOG_LEVEL="INFO"
+
+# Optional: Environment detection for automatic worker management
+export ENVIRONMENT="development"  # or "production"
 ```
+
+### 🔄 Development vs Production: Same Code, Different Workers
+
+**The most important thing to understand**: Your application code is **identical** between environments.
+
+**Development Configuration:**
+```bash
+# .env.development
+ENVIRONMENT=development
+FASTJOB_DATABASE_URL="postgresql://localhost/myapp_dev"
+
+# Your app automatically starts embedded worker
+python -m uvicorn main:app --reload
+```
+
+**Production Configuration:**
+```bash
+# .env.production
+ENVIRONMENT=production
+FASTJOB_DATABASE_URL="postgresql://user:pass@prod-db/myapp"
+
+# Your app runs normally
+python -m uvicorn main:app
+
+# Workers run separately
+fastjob run-worker --concurrency 4
+```
+
+**🎯 Result**: Same `@fastjob.job()` functions, same `await fastjob.enqueue()` calls, different worker management. Perfect developer experience.
 
 ## Production deployment
 
