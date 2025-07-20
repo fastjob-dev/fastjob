@@ -1,0 +1,48 @@
+# FastJob Worker systemd Service
+# Place this file in /etc/systemd/system/fastjob-worker.service
+
+[Unit]
+Description=FastJob Worker
+After=network.target
+# Note: Remove postgresql.service dependency if PostgreSQL runs on remote server
+# After=network.target postgresql.service
+# Requires=postgresql.service
+
+[Service]
+Type=exec
+User=fastjob
+Group=fastjob
+WorkingDirectory=/opt/fastjob
+Environment=FASTJOB_DATABASE_URL=postgresql://fastjob:password@localhost/fastjob_prod
+Environment=FASTJOB_LOG_LEVEL=INFO
+Environment=FASTJOB_JOBS_MODULE=myapp.jobs
+ExecStart=/opt/fastjob/venv/bin/fastjob run-worker --concurrency=4 --queues=default,urgent,background
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/fastjob /var/log/fastjob
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=200%
+
+# Health monitoring
+ExecStartPre=/opt/fastjob/venv/bin/fastjob health
+TimeoutStartSec=30
+WatchdogSec=60
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fastjob-worker
+
+[Install]
+WantedBy=multi-user.target

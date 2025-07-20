@@ -1,0 +1,47 @@
+# FastJob Dashboard systemd Service (Pro/Enterprise)
+# Place this file in /etc/systemd/system/fastjob-dashboard.service
+
+[Unit]
+Description=FastJob Dashboard
+After=network.target fastjob-worker.service
+# Note: Remove postgresql.service dependency if PostgreSQL runs on remote server
+# After=network.target postgresql.service fastjob-worker.service
+# Requires=postgresql.service
+Wants=fastjob-worker.service
+
+[Service]
+Type=exec
+User=fastjob
+Group=fastjob
+WorkingDirectory=/opt/fastjob
+Environment=FASTJOB_DATABASE_URL=postgresql://fastjob:password@localhost/fastjob_prod
+Environment=FASTJOB_LOG_LEVEL=INFO
+ExecStart=/opt/fastjob/venv/bin/fastjob dashboard --host=0.0.0.0 --port=8000
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/fastjob /var/log/fastjob
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=100%
+
+# Health monitoring
+ExecStartPre=/opt/fastjob/venv/bin/fastjob ready
+TimeoutStartSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fastjob-dashboard
+
+[Install]
+WantedBy=multi-user.target

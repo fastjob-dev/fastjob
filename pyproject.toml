@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastjob"
+version = "0.1.0"
+description = "FastJob - Async Job Queue for Python (Backed by PostgreSQL)"
+authors = [{ name = "Abhinav Saxena", email = "abhinav@apiclabs.com" }]
+readme = "README.md"
+license = "MIT"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Distributed Computing",
+]
+keywords = ["async", "job", "queue", "postgresql", "task"]
+dependencies = [
+  "asyncpg>=0.29.0,<0.30.0",
+  "pydantic>=2.7.1,<3.0.0",
+  "setuptools",              # For plugin discovery via entry points
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4.0", "pytest-asyncio>=0.21.0"]
+
+[project.scripts]
+fastjob = "fastjob.cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["fastjob*"]
+exclude = ["tests*", "jobs*", "deployment*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+

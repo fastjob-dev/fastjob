@@ -1,0 +1,319 @@
+# FastJob Kubernetes Deployment
+# Production-ready Kubernetes configuration
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fastjob
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fastjob-config
+  namespace: fastjob
+data:
+  FASTJOB_LOG_LEVEL: "INFO"
+  FASTJOB_JOBS_MODULE: "myapp.jobs"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fastjob-secrets
+  namespace: fastjob
+type: Opaque
+data:
+  # Base64 encoded values - replace with actual values
+  FASTJOB_DATABASE_URL: cG9zdGdyZXNxbDovL2Zhc3Rqb2I6cGFzc3dvcmRAbG9jYWxob3N0L2Zhc3Rqb2JfcHJvZA==
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastjob-worker
+  namespace: fastjob
+  labels:
+    app: fastjob-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fastjob-worker
+  template:
+    metadata:
+      labels:
+        app: fastjob-worker
+    spec:
+      containers:
+      - name: fastjob-worker
+        image: fastjob/worker:latest
+        imagePullPolicy: Always
+        args: 
+          - "fastjob"
+          - "run-worker"
+          - "--concurrency=4"
+          - "--queues=default,urgent,background"
+        env:
+        - name: FASTJOB_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: fastjob-secrets
+              key: FASTJOB_DATABASE_URL
+        envFrom:
+        - configMapRef:
+            name: fastjob-config
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - fastjob
+            - health
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - fastjob
+            - ready
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: logs
+        emptyDir: {}
+      restartPolicy: Always
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastjob-dashboard
+  namespace: fastjob
+  labels:
+    app: fastjob-dashboard
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fastjob-dashboard
+  template:
+    metadata:
+      labels:
+        app: fastjob-dashboard
+    spec:
+      containers:
+      - name: fastjob-dashboard
+        image: fastjob/dashboard:latest
+        imagePullPolicy: Always
+        args:
+          - "fastjob"
+          - "dashboard"
+          - "--host=0.0.0.0"
+          - "--port=8000"
+        env:
+        - name: FASTJOB_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: fastjob-secrets
+              key: FASTJOB_DATABASE_URL
+        envFrom:
+        - configMapRef:
+            name: fastjob-config
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: logs
+        emptyDir: {}
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastjob-dashboard-service
+  namespace: fastjob
+  labels:
+    app: fastjob-dashboard
+spec:
+  selector:
+    app: fastjob-dashboard
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fastjob-dashboard-ingress
+  namespace: fastjob
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - fastjob.yourdomain.com
+    secretName: fastjob-tls
+  rules:
+  - host: fastjob.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: fastjob-dashboard-service
+            port:
+              number: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastjob-priority-worker
+  namespace: fastjob
+  labels:
+    app: fastjob-priority-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastjob-priority-worker
+  template:
+    metadata:
+      labels:
+        app: fastjob-priority-worker
+    spec:
+      containers:
+      - name: fastjob-priority-worker
+        image: fastjob/worker:latest
+        imagePullPolicy: Always
+        args:
+          - "fastjob"
+          - "run-worker"
+          - "--concurrency=2"
+          - "--queues=urgent"
+        env:
+        - name: FASTJOB_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: fastjob-secrets
+              key: FASTJOB_DATABASE_URL
+        envFrom:
+        - configMapRef:
+            name: fastjob-config
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          exec:
+            command:
+            - fastjob
+            - health
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - fastjob
+            - ready
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fastjob-worker-hpa
+  namespace: fastjob
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fastjob-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: fastjob-metrics
+  namespace: fastjob
+  labels:
+    app: fastjob
+spec:
+  selector:
+    matchLabels:
+      app: fastjob-dashboard
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
