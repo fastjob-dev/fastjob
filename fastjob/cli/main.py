@@ -46,7 +46,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  fastjob run-worker --concurrency 4 --queues default,urgent
+  fastjob worker --concurrency 4 --queues default,urgent
   fastjob migrate
   fastjob health --verbose
   fastjob dashboard --host 0.0.0.0 --port 8000
@@ -58,14 +58,14 @@ For more information, visit: https://docs.fastjob.dev
     subparsers = parser.add_subparsers(dest="command", title="Available commands")
 
     # Core commands (always available)
-    run_worker_parser = subparsers.add_parser(
-        "run-worker", 
-        help="Run a FastJob worker",
+    worker_parser = subparsers.add_parser(
+        "worker", 
+        help="Start a FastJob worker",
         description="Start a FastJob worker to process background jobs"
     )
-    run_worker_parser.add_argument("--concurrency", type=int, default=4, help="Number of concurrent jobs to process")
-    run_worker_parser.add_argument("--run-once", action="store_true", help="Process available jobs once and exit")
-    run_worker_parser.add_argument("--queues", nargs="+", default=["default"], help="Queues to process (comma-separated)")
+    worker_parser.add_argument("--concurrency", type=int, default=4, help="Number of concurrent jobs to process")
+    worker_parser.add_argument("--run-once", action="store_true", help="Process available jobs once and exit")
+    worker_parser.add_argument("--queues", nargs="+", default=["default"], help="Queues to process (comma-separated)")
 
     subparsers.add_parser("migrate", help="Run database migrations", description="Initialize or update FastJob database schema")
     
@@ -157,7 +157,7 @@ For more information, visit: https://docs.fastjob.dev
 
     # Handle core commands
     try:
-        if args.command == "run-worker":
+        if args.command == "worker":
             print_status("Starting FastJob worker...", "info")
             asyncio.run(run_worker(args.concurrency, run_once=args.run_once, queues=args.queues))
         elif args.command == "migrate":

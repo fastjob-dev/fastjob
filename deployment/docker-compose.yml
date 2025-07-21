@@ -44,7 +44,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp  # Mount your application code
-    command: ["fastjob", "run-worker", "--concurrency=4", "--queues=default,urgent,background"]
+    command: ["fastjob", "worker", "--concurrency=4", "--queues=default,urgent,background"]
     healthcheck:
       test: ["CMD", "fastjob", "health"]
       interval: 30s
@@ -114,7 +114,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp
-    command: ["fastjob", "run-worker", "--concurrency=2", "--queues=urgent"]
+    command: ["fastjob", "worker", "--concurrency=2", "--queues=urgent"]
     profiles:
       - priority  # Optional service - enable with --profile priority
     healthcheck:

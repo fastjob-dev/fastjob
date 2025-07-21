@@ -96,7 +96,7 @@ fastjob.start_embedded_worker()
 python -m uvicorn main:app
 
 # Separate process runs the workers - same job code!
-fastjob run-worker --concurrency 4 --queues default,critical
+fastjob worker --concurrency 4 --queues default,critical
 ```
 
 **🔑 Key Point**: Your `@fastjob.job()` functions and `await fastjob.enqueue()` calls are **exactly the same** in both environments. Only the worker startup changes.
@@ -311,7 +311,7 @@ FASTJOB_DATABASE_URL="postgresql://user:pass@prod-db/myapp"
 python -m uvicorn main:app
 
 # Workers run separately
-fastjob run-worker --concurrency 4
+fastjob worker --concurrency 4
 ```
 
 **🎯 Result**: Same `@fastjob.job()` functions, same `await fastjob.enqueue()` calls, different worker management. Perfect developer experience.

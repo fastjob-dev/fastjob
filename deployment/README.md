@@ -324,11 +324,11 @@ scrape_configs:
 
 ```bash
 # Adjust concurrency based on workload
-fastjob run-worker --concurrency=8  # CPU-bound tasks
-fastjob run-worker --concurrency=16 # I/O-bound tasks
+fastjob worker --concurrency=8  # CPU-bound tasks
+fastjob worker --concurrency=16 # I/O-bound tasks
 
 # Use multiple queues for prioritization
-fastjob run-worker --queues=urgent,default,background
+fastjob worker --queues=urgent,default,background
 ```
 
 ### Database Performance
