@@ -1,10 +1,12 @@
 # FastJob
 
-**Tired of the complexity of setting up Celery? FastJob is the Python job queue with a beautiful API that gets out of your way.**
+**Because your background jobs shouldn't be a background worry.**
 
-FastJob is a background job library I built for developers who believe code should be elegant, not just functional. It uses PostgreSQL for rock-solid persistence and embraces Python's async/await syntax with APIs that make you smile while you write them.
+After spending too many hours wrestling with Celery's daunting documentation and the operational overhead of Redis just to run a simple background task, I decided to build the tool I wished I had.
 
-After spending too many hours wrestling with Redis configurations, broker settings, and Celery's daunting documentation just to process some background tasks, I decided to build something better. FastJob is what I wish existed when I started building async Python applications - simple, type-safe, and actually enjoyable to use.
+I built FastJob on a simple, powerful idea: your database (PostgreSQL) is already rock-solid, so you shouldn't need another service just to enqueue jobs. It's a library that values developer happiness and elegant design over endless configuration, with a beautiful, type-safe API that feels like a joy to use, not a chore.
+
+It's the job queue for developers who believe simple is beautiful.
 
 ## Why I Built FastJob (And Why You'll Love It)
 **Gorgeous APIs** - From `@fastjob.job()` to fluent scheduling, everything reads like natural language
