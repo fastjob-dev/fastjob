@@ -135,10 +135,11 @@ async def run_worker(concurrency: int = 4, run_once: bool = False, database_url:
         queues: List of queue names to process. If None, processes 'default' queue
     """
     from fastjob.settings import FASTJOB_DATABASE_URL
+    from fastjob.db.connection import create_pool
     
     db_url = database_url or FASTJOB_DATABASE_URL
     try:
-        pool = await asyncpg.create_pool(db_url)
+        pool = await create_pool(db_url)
     except Exception as e:
         logger.error(f"Failed to create database pool: {e}")
         raise
@@ -159,22 +160,51 @@ async def run_worker(concurrency: int = 4, run_once: bool = False, database_url:
             else:
                 logger.warning("No database pool available for run_once processing")
         else:
-            # Continuous processing
+            # Continuous processing with LISTEN/NOTIFY
             async def worker():
-                import itertools
-                queue_cycle = itertools.cycle(queues)  # Round-robin through queues
+                # Each worker needs its own connection for LISTEN/NOTIFY
+                listen_conn = await pool.acquire()
+                notification_event = asyncio.Event()
                 
-                while True:
-                    try:
-                        queue = next(queue_cycle)
-                        async with pool.acquire() as conn:
-                            processed = await process_jobs(conn, queue)
-                        
-                        if not processed:
-                            await asyncio.sleep(1)  # No jobs available, wait a bit
-                    except Exception as e:
-                        logger.exception(f"Worker error: {e}")
-                        await asyncio.sleep(5)  # Error occurred, wait before retrying
+                def notification_callback(connection, pid, channel, payload):
+                    logger.debug(f"Received notification on {channel}: {payload}")
+                    notification_event.set()
+                
+                try:
+                    # Set up LISTEN for job notifications
+                    await listen_conn.add_listener("fastjob_new_job", notification_callback)
+                    
+                    while True:
+                        try:
+                            # Process jobs from all queues first
+                            any_processed = False
+                            
+                            # Use separate connection for job processing to avoid blocking LISTEN
+                            async with pool.acquire() as job_conn:
+                                for queue in queues:
+                                    processed = await process_jobs(job_conn, queue)
+                                    if processed:
+                                        any_processed = True
+                            
+                            if not any_processed:
+                                # No jobs available, wait for NOTIFY with timeout
+                                try:
+                                    # Wait for notification with 5 second timeout
+                                    await asyncio.wait_for(notification_event.wait(), timeout=5.0)
+                                    notification_event.clear()  # Reset for next notification
+                                    logger.debug("Received job notification")
+                                except asyncio.TimeoutError:
+                                    # Timeout is normal - allows periodic checks for scheduled jobs
+                                    logger.debug("No notifications, checking for scheduled jobs")
+                                    pass
+                                    
+                        except Exception as e:
+                            logger.exception(f"Worker error: {e}")
+                            await asyncio.sleep(5)  # Error occurred, wait before retrying
+                            
+                finally:
+                    await listen_conn.remove_listener("fastjob_new_job", notification_callback)
+                    await pool.release(listen_conn)
             
             # Start multiple worker tasks for concurrency
             tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]

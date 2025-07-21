@@ -85,6 +85,10 @@ async def enqueue(
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
             """, uuid.UUID(job_id), job_name, json.dumps(kwargs), job_meta["retries"], 
             final_priority, final_queue, scheduled_at)
+            
+            # Notify workers about the new job for instant processing
+            await conn.execute(f"NOTIFY fastjob_new_job, '{final_queue}'")
+            
         except Exception as e:
             # Sometimes the database unique constraint catches duplicates we missed
             if final_unique and "duplicate key value violates unique constraint" in str(e):

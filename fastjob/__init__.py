@@ -62,5 +62,18 @@ def __getattr__(name: str):
     
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
+def __dir__():
+    """Make plugin features visible in dir() for better IDE support."""
+    # Get base module attributes
+    base_attrs = [attr for attr in globals().keys() if not attr.startswith('_')]
+    
+    # Add all registered plugin features
+    plugin_features = list(_plugin_features.keys())
+    
+    # Combine and deduplicate
+    all_attrs = list(set(base_attrs + plugin_features + __all__))
+    
+    return sorted(all_attrs)
+
 # Load plugins at import time
 discover_and_load_plugins()
