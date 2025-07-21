@@ -26,6 +26,10 @@ def job(retries: int = 3, args_model: Type[BaseModel] = None, priority: int = 10
 def get_job(name: str):
     return _registry.get(name)
 
+def get_all_jobs():
+    """Get all registered job names."""
+    return list(_registry.keys())
+
 def clear_registry():
     """Clear all registered jobs. Used for testing."""
     global _registry

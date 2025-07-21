@@ -13,27 +13,13 @@ from fastjob.core.discovery import discover_jobs
 
 
 def load_plugin_commands(subparsers):
-    """Load CLI commands from installed fastjob plugins"""
+    """Load CLI commands from installed fastjob plugins using proper plugin architecture"""
     try:
         from fastjob.plugins import get_plugin_manager
         plugin_manager = get_plugin_manager()
         
-        # Get CLI commands from all loaded plugins
-        plugin_commands_list = plugin_manager.call_hook('cli_commands')
-        
-        for plugin_commands in plugin_commands_list:
-            if isinstance(plugin_commands, dict):
-                for command_name, command_func in plugin_commands.items():
-                    try:
-                        # Create subparser for the plugin command
-                        plugin_parser = subparsers.add_parser(
-                            command_name, 
-                            help=f"{command_name} command (plugin)"
-                        )
-                        # Store the command function for later execution
-                        plugin_parser.set_defaults(plugin_func=command_func)
-                    except Exception as e:
-                        print(f"Warning: Could not load plugin command '{command_name}': {e}")
+        # Call plugin hook to let plugins register their own subparsers
+        plugin_manager.call_hook('register_cli_commands', subparsers)
                         
     except Exception as e:
         # No plugins found or plugin system not available
@@ -182,19 +168,9 @@ For more information, visit: https://docs.fastjob.dev
             exit_code = asyncio.run(handle_status_command(args))
             exit(exit_code)
         elif hasattr(args, 'plugin_func'):
-            # Handle plugin commands
+            # Handle plugin commands - plugins now handle their own argument parsing
             try:
-                # For plugin commands, we need to re-parse with the plugin's arguments
-                # Get remaining arguments for the plugin
-                import sys
-                remaining_args = sys.argv[2:]  # Skip 'fastjob' and command name
-                
-                # Create a new parser for the plugin to add its specific arguments
-                plugin_parser = argparse.ArgumentParser(
-                    prog=f"fastjob {args.command}",
-                    description=f"{args.command} command"
-                )
-                exit_code = args.plugin_func(plugin_parser, remaining_args)
+                exit_code = args.plugin_func(args)
                 exit(exit_code or 0)
             except Exception as e:
                 print_status(f"Plugin command failed: {e}", "error")
