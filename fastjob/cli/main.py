@@ -15,28 +15,28 @@ from fastjob.core.discovery import discover_jobs
 def load_plugin_commands(subparsers):
     """Load CLI commands from installed fastjob plugins"""
     try:
-        # Try modern importlib.metadata first
-        try:
-            plugin_entry_points = entry_points().get('fastjob.plugins', [])
-            entry_point_iter = plugin_entry_points
-        except:
-            # Fallback to pkg_resources for older Python versions
-            entry_point_iter = iter_entry_points('fastjob.plugins')
+        from fastjob.plugins import get_plugin_manager
+        plugin_manager = get_plugin_manager()
         
-        for entry_point in entry_point_iter:
-            try:
-                plugin_command = entry_point.load()
-                # Create subparser for the plugin command
-                plugin_parser = subparsers.add_parser(
-                    entry_point.name, 
-                    help=f"{entry_point.name} command (plugin)"
-                )
-                # Store the command function for later execution
-                plugin_parser.set_defaults(plugin_func=plugin_command)
-            except Exception as e:
-                print(f"Warning: Could not load plugin command '{entry_point.name}': {e}")
-    except Exception:
-        # No plugins found or entry points not available
+        # Get CLI commands from all loaded plugins
+        plugin_commands_list = plugin_manager.call_hook('cli_commands')
+        
+        for plugin_commands in plugin_commands_list:
+            if isinstance(plugin_commands, dict):
+                for command_name, command_func in plugin_commands.items():
+                    try:
+                        # Create subparser for the plugin command
+                        plugin_parser = subparsers.add_parser(
+                            command_name, 
+                            help=f"{command_name} command (plugin)"
+                        )
+                        # Store the command function for later execution
+                        plugin_parser.set_defaults(plugin_func=command_func)
+                    except Exception as e:
+                        print(f"Warning: Could not load plugin command '{command_name}': {e}")
+                        
+    except Exception as e:
+        # No plugins found or plugin system not available
         pass
 
 

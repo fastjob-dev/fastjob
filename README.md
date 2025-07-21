@@ -267,6 +267,31 @@ fastjob dashboard  # Opens at http://localhost:6161
 
 **Migration from Free to Pro**: Literally just `pip install fastjob-pro` and you're done. Zero code changes required.
 
+### 🏗️ Built on Solid Plugin Architecture
+
+FastJob uses a professional plugin system that ensures:
+
+- **Predictable imports**: `import fastjob` always works reliably
+- **IDE-friendly**: Go to Definition, autocomplete, and type checking work perfectly
+- **Independent evolution**: Free, Pro, and Enterprise packages can update independently
+- **No technical debt**: Clean architecture that scales with your needs
+
+```python
+# Your code stays exactly the same:
+import fastjob
+
+@fastjob.job()
+async def my_task():
+    pass
+
+# But you get new features automatically when you upgrade:
+# Free: fastjob.enqueue()
+# Pro: fastjob.every("5m").do() + fastjob.dashboard
+# Enterprise: fastjob.get_system_metrics() + fastjob.setup_webhooks()
+```
+
+This isn't magic - it's careful engineering that makes upgrades feel seamless.
+
 Learn more at [FastJob Pro](https://github.com/abhinavs/fastjob-pro)
 
 ## Configuration
@@ -315,6 +340,76 @@ fastjob worker --concurrency 4
 ```
 
 **🎯 Result**: Same `@fastjob.job()` functions, same `await fastjob.enqueue()` calls, different worker management. Perfect developer experience.
+
+## 📁 Job Organization Made Simple
+
+FastJob automatically discovers your jobs - no configuration needed for most projects:
+
+### Zero-config approach (recommended)
+
+Create a `jobs/` directory in your project root:
+
+```
+my-project/
+├── main.py          # Your web app
+├── jobs/            # ✅ FastJob finds this automatically
+│   ├── __init__.py  # Empty file
+│   ├── email.py     # Email-related jobs
+│   ├── images.py    # Image processing jobs
+│   └── reports.py   # Report generation jobs
+└── requirements.txt
+```
+
+**jobs/email.py:**
+```python
+import fastjob
+
+@fastjob.job(retries=3, queue="emails")
+async def send_welcome_email(user_email: str, name: str):
+    # Your email logic here
+    pass
+
+@fastjob.job(retries=2, queue="emails") 
+async def send_password_reset(user_id: int):
+    # Your password reset logic
+    pass
+```
+
+**jobs/images.py:**
+```python
+import fastjob
+
+@fastjob.job(retries=1, queue="media")
+async def resize_image(image_path: str, width: int, height: int):
+    # Your image processing logic
+    pass
+
+@fastjob.job(queue="media")
+async def generate_thumbnail(image_path: str):
+    # Your thumbnail generation logic
+    pass
+```
+
+**That's it!** FastJob finds and imports all jobs automatically when workers start.
+
+### Custom job module (advanced)
+
+If you prefer a different structure:
+
+```bash
+export FASTJOB_JOBS_MODULE="myapp.background_tasks"
+```
+
+FastJob will then look for jobs in `myapp/background_tasks/` instead.
+
+### 🔍 How job discovery works
+
+1. **FastJob looks for `FASTJOB_JOBS_MODULE`** (default: `"jobs"`)
+2. **Falls back to `jobs/` directory** in your project root
+3. **Imports all Python files** and registers `@fastjob.job()` functions
+4. **Works with packages or individual files** - your choice
+
+The beauty is that jobs are discovered automatically, so you can focus on writing them, not configuring them.
 
 ## Production deployment
 
