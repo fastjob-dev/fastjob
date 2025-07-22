@@ -192,3 +192,162 @@ async def test_schedule_in_and_schedule_at():
     finally:
         await close_pool()
         await drop_test_database()
+
+
+@pytest.mark.asyncio
+async def test_unified_schedule_function():
+    """Test the new unified schedule() function with different time formats"""
+    await create_test_database()
+    try:
+        pool = await get_pool()
+        await clear_table(pool)
+        
+        # Test with datetime object
+        future_datetime = datetime.now() + timedelta(minutes=15)
+        datetime_job_id = await fastjob.schedule(
+            scheduled_job,
+            future_datetime,
+            message="scheduled with datetime"
+        )
+        
+        # Test with integer seconds
+        seconds_job_id = await fastjob.schedule(
+            scheduled_job,
+            900,  # 15 minutes in seconds
+            message="scheduled with seconds"
+        )
+        
+        # Test with float seconds
+        float_job_id = await fastjob.schedule(
+            scheduled_job,
+            900.5,  # 15 minutes and 0.5 seconds
+            message="scheduled with float seconds"
+        )
+        
+        # Test with timedelta object
+        timedelta_job_id = await fastjob.schedule(
+            scheduled_job,
+            timedelta(minutes=15),
+            message="scheduled with timedelta"
+        )
+        
+        # Verify all jobs are scheduled correctly
+        async with pool.acquire() as conn:
+            datetime_record = await conn.fetchrow(
+                "SELECT * FROM fastjob_jobs WHERE id = $1", 
+                uuid.UUID(datetime_job_id)
+            )
+            seconds_record = await conn.fetchrow(
+                "SELECT * FROM fastjob_jobs WHERE id = $1", 
+                uuid.UUID(seconds_job_id)
+            )
+            float_record = await conn.fetchrow(
+                "SELECT * FROM fastjob_jobs WHERE id = $1", 
+                uuid.UUID(float_job_id)
+            )
+            timedelta_record = await conn.fetchrow(
+                "SELECT * FROM fastjob_jobs WHERE id = $1", 
+                uuid.UUID(timedelta_job_id)
+            )
+            
+            # All should be scheduled
+            assert datetime_record["scheduled_at"] is not None
+            assert seconds_record["scheduled_at"] is not None  
+            assert float_record["scheduled_at"] is not None
+            assert timedelta_record["scheduled_at"] is not None
+            
+            # All should be queued
+            assert datetime_record["status"] == "queued"
+            assert seconds_record["status"] == "queued"
+            assert float_record["status"] == "queued"
+            assert timedelta_record["status"] == "queued"
+            
+            # Check that scheduling times are reasonable (within a few seconds of expected)
+            now = datetime.now()
+            expected_time = now + timedelta(minutes=15)
+            
+            # For datetime scheduling, time should be exactly what we specified
+            assert abs((datetime_record["scheduled_at"] - future_datetime).total_seconds()) < 1
+            
+            # For seconds and timedelta scheduling, should be close to expected time
+            assert abs((seconds_record["scheduled_at"] - expected_time).total_seconds()) < 10
+            assert abs((timedelta_record["scheduled_at"] - expected_time).total_seconds()) < 10
+            
+    finally:
+        await close_pool()
+        await drop_test_database()
+
+
+@pytest.mark.asyncio
+async def test_schedule_invalid_input():
+    """Test that schedule() raises appropriate errors for invalid input"""
+    await create_test_database()
+    try:
+        pool = await get_pool()
+        await clear_table(pool)
+        
+        # Test invalid input type
+        with pytest.raises(ValueError, match="Invalid 'when' parameter"):
+            await fastjob.schedule(scheduled_job, "invalid_string")
+            
+        with pytest.raises(ValueError, match="Invalid 'when' parameter"):
+            await fastjob.schedule(scheduled_job, [1, 2, 3])
+            
+        with pytest.raises(ValueError, match="Invalid 'when' parameter"):
+            await fastjob.schedule(scheduled_job, {"key": "value"})
+        
+    finally:
+        await close_pool()
+        await drop_test_database()
+
+
+@pytest.mark.asyncio 
+async def test_backward_compatibility():
+    """Test that schedule_at and schedule_in still work (backward compatibility)"""
+    await create_test_database()
+    try:
+        pool = await get_pool()
+        await clear_table(pool)
+        
+        # Test that old functions still work
+        future_time = datetime.now() + timedelta(minutes=10)
+        
+        old_at_job = await fastjob.schedule_at(
+            scheduled_job,
+            future_time,
+            message="using old schedule_at"
+        )
+        
+        old_in_job = await fastjob.schedule_in(
+            scheduled_job,
+            600,  # 10 minutes
+            message="using old schedule_in"
+        )
+        
+        # Compare with new function
+        new_at_job = await fastjob.schedule(
+            scheduled_job,
+            future_time,
+            message="using new schedule with datetime"
+        )
+        
+        new_in_job = await fastjob.schedule(
+            scheduled_job,
+            600,
+            message="using new schedule with seconds"
+        )
+        
+        # All should be scheduled successfully
+        assert old_at_job is not None
+        assert old_in_job is not None
+        assert new_at_job is not None
+        assert new_in_job is not None
+        
+        # Verify all jobs exist in database
+        async with pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM fastjob_jobs WHERE status = 'queued'")
+            assert count == 4
+        
+    finally:
+        await close_pool()
+        await drop_test_database()

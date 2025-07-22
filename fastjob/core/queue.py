@@ -7,8 +7,8 @@ The goal is to make it feel natural and reliable for developers.
 
 import json
 import uuid
-from typing import Callable, Any, Optional, Dict, List
-from datetime import datetime
+from typing import Callable, Any, Optional, Dict, List, Union
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
@@ -337,33 +337,58 @@ async def get_queue_stats() -> List[Dict[str, Any]]:
         ]
 
 
-async def schedule_at(job_func: Callable[..., Any], when: datetime, **kwargs) -> str:
+async def schedule(
+    job_func: Callable[..., Any], 
+    *,
+    run_at: Optional[datetime] = None,
+    run_in: Optional[Union[int, float, timedelta]] = None,
+    **kwargs
+) -> str:
     """
-    Schedule a job to run at a specific datetime.
+    Schedule a job to run at a specific time or after a delay.
     
     Args:
         job_func: The job function to schedule
-        when: When to execute the job
+        run_at: Schedule job at specific datetime (mutually exclusive with run_in)
+        run_in: Schedule job after delay. Can be:
+            - int/float: Delay in seconds from now
+            - timedelta: Delay from now
         **kwargs: Arguments to pass to the job function
         
     Returns:
         str: The job ID
-    """
-    return await enqueue(job_func, scheduled_at=when, **kwargs)
-
-
-async def schedule_in(job_func: Callable[..., Any], seconds: int, **kwargs) -> str:
-    """
-    Schedule a job to run after a specified number of seconds.
-    
-    Args:
-        job_func: The job function to schedule
-        seconds: Delay in seconds before execution
-        **kwargs: Arguments to pass to the job function
         
-    Returns:
-        str: The job ID
+    Examples:
+        # Schedule at specific datetime
+        await schedule(my_job, run_at=datetime(2024, 1, 15, 9, 0))
+        
+        # Schedule in 30 seconds
+        await schedule(my_job, run_in=30)
+        
+        # Schedule in 2 hours using timedelta
+        await schedule(my_job, run_in=timedelta(hours=2))
     """
-    from datetime import datetime, timedelta
-    scheduled_time = datetime.now() + timedelta(seconds=seconds)
+    # Validate arguments
+    if run_at is not None and run_in is not None:
+        raise ValueError("Cannot specify both 'run_at' and 'run_in' - use only one")
+    
+    if run_at is None and run_in is None:
+        raise ValueError("Must specify either 'run_at' or 'run_in'")
+    
+    if run_at is not None:
+        # Schedule at specific datetime
+        scheduled_time = run_at
+    else:
+        # Schedule after delay (run_in)
+        if isinstance(run_in, (int, float)):
+            # Number of seconds - schedule after delay
+            scheduled_time = datetime.now() + timedelta(seconds=run_in)
+        elif isinstance(run_in, timedelta):
+            # Timedelta - schedule after delay
+            scheduled_time = datetime.now() + run_in
+        else:
+            raise ValueError(f"Invalid 'run_in' parameter: {type(run_in)}. Must be int/float (seconds) or timedelta")
+    
     return await enqueue(job_func, scheduled_at=scheduled_time, **kwargs)
+
+

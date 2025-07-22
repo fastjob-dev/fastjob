@@ -109,6 +109,11 @@ class FastJobSettings(BaseSettings):
         description="Enable debug mode"
     )
     
+    dev_mode: bool = Field(
+        default=False,
+        description="Enable development mode (starts embedded worker automatically)"
+    )
+    
     environment: str = Field(
         default="production",
         description="Environment name (development, testing, production)"
@@ -187,3 +192,4 @@ settings = get_settings()
 # Backward compatibility exports
 FASTJOB_DATABASE_URL = settings.database_url
 FASTJOB_JOBS_MODULE = settings.jobs_module
+FASTJOB_DEV_MODE = settings.dev_mode

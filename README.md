@@ -160,28 +160,27 @@ async def upload_photo(user_id: int, image_data: bytes):
 
     return {"status": "uploaded", "processing": "queued"}
 
-# 🔄 Only this startup code differs based on environment
+# 🔄 Same code works in development and production
 @app.on_event("startup")
 async def startup():
-    if os.getenv("ENVIRONMENT") == "development":
-        fastjob.start_embedded_worker()  # Development: embedded worker
-    # Production: external workers handle jobs automatically
+    if fastjob.run_in_dev_mode():
+        fastjob.start_embedded_worker()  # Only in development
 
 @app.on_event("shutdown")
 async def shutdown():
-    if os.getenv("ENVIRONMENT") == "development":
+    if fastjob.run_in_dev_mode():
         await fastjob.stop_embedded_worker()
 ```
 
 **Development deployment:**
 ```bash
-export ENVIRONMENT=development
-python -m uvicorn main:app --reload  # Worker runs inside your app
+export FASTJOB_DEV_MODE=true
+python -m uvicorn main:app --reload  # Embedded worker starts automatically
 ```
 
 **Production deployment:**
 ```bash
-export ENVIRONMENT=production
+# FASTJOB_DEV_MODE=false (default)
 python -m uvicorn main:app           # App runs normally
 fastjob run-worker --concurrency 4   # Workers run separately
 ```
@@ -226,17 +225,24 @@ async def cleanup_old_files():
 ```python
 from datetime import datetime, timedelta
 
-# Schedule for later
-await fastjob.schedule_at(
+# Schedule at specific datetime
+await fastjob.schedule(
     send_reminder,
-    when=datetime.now() + timedelta(hours=24),
+    run_at=datetime.now() + timedelta(hours=24),
     user_id=123
 )
 
-# Schedule in X seconds
-await fastjob.schedule_in(
+# Schedule after delay (seconds)
+await fastjob.schedule(
     send_reminder,
-    seconds=86400,  # 24 hours
+    run_in=86400,  # 24 hours in seconds
+    user_id=123
+)
+
+# Schedule using timedelta (more readable)
+await fastjob.schedule(
+    send_reminder,
+    run_in=timedelta(hours=24),
     user_id=123
 )
 ```

@@ -107,16 +107,20 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    """Start FastJob embedded worker when the app starts."""
-    print("🚀 Starting FastJob embedded worker...")
-    fastjob.start_embedded_worker()
+    """Start FastJob embedded worker in development mode."""
+    if fastjob.run_in_dev_mode():
+        print("🚀 Starting FastJob embedded worker (dev mode)...")
+        fastjob.start_embedded_worker()
+    else:
+        print("📊 Production mode - workers run separately")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop FastJob embedded worker when the app shuts down."""
-    print("🛑 Stopping FastJob embedded worker...")
-    await fastjob.stop_embedded_worker()
+    """Stop FastJob embedded worker if running."""
+    if fastjob.run_in_dev_mode():
+        print("🛑 Stopping FastJob embedded worker...")
+        await fastjob.stop_embedded_worker()
 
 
 @app.get("/")
