@@ -10,6 +10,7 @@ CREATE TABLE fastjob_jobs (
   queue TEXT DEFAULT 'default',
   priority INT DEFAULT 100,
   scheduled_at TIMESTAMP,
+  expires_at TIMESTAMP,
   last_error TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -19,6 +20,7 @@ CREATE TABLE fastjob_jobs (
 CREATE INDEX idx_fastjob_jobs_status_priority ON fastjob_jobs (status, priority) WHERE status = 'queued';
 CREATE INDEX idx_fastjob_jobs_queue_status ON fastjob_jobs (queue, status);
 CREATE INDEX idx_fastjob_jobs_scheduled_at ON fastjob_jobs (scheduled_at) WHERE scheduled_at IS NOT NULL;
+CREATE INDEX idx_fastjob_jobs_expires_at ON fastjob_jobs (expires_at) WHERE expires_at IS NOT NULL;
 
 -- Unique constraint for preventing duplicate jobs (job_name + args combination)
 -- This will be enforced only when status is 'queued' to allow requeuing after completion

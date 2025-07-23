@@ -103,6 +103,13 @@ class FastJobSettings(BaseSettings):
         description="Log format: 'simple' or 'structured'"
     )
     
+    # Job Result Retention (TTL)
+    result_ttl: int = Field(
+        default=0,
+        ge=0,
+        description="Time to live for completed jobs in seconds (0=delete immediately, >0=keep for N seconds)"
+    )
+    
     # Development/Testing
     debug: bool = Field(
         default=False,
@@ -193,3 +200,4 @@ settings = get_settings()
 FASTJOB_DATABASE_URL = settings.database_url
 FASTJOB_JOBS_MODULE = settings.jobs_module
 FASTJOB_DEV_MODE = settings.dev_mode
+FASTJOB_RESULT_TTL = settings.result_ttl

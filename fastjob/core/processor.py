@@ -82,15 +82,27 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
             # Calculate duration
             duration_ms = round((time.time() - start_time) * 1000, 2)
             
-            # Mark as successful
-            await conn.execute("""
-                UPDATE fastjob_jobs
-                SET status = 'done', 
-                    updated_at = NOW()
-                WHERE id = $1
-            """, job_id)
+            # Handle job result TTL setting
+            from fastjob.settings import get_settings
+            settings = get_settings()
             
-            logger.info(f"Job {job_id} completed successfully in {duration_ms}ms")
+            if settings.result_ttl == 0:
+                # Delete immediately (TTL = 0)
+                await conn.execute("""
+                    DELETE FROM fastjob_jobs
+                    WHERE id = $1
+                """, job_id)
+                logger.info(f"Job {job_id} completed successfully in {duration_ms}ms (deleted immediately)")
+            else:
+                # Keep with TTL expiration timestamp
+                await conn.execute("""
+                    UPDATE fastjob_jobs
+                    SET status = 'done', 
+                        updated_at = NOW(),
+                        expires_at = NOW() + INTERVAL '%s seconds'
+                    WHERE id = $1
+                """, settings.result_ttl, job_id)
+                logger.info(f"Job {job_id} completed successfully in {duration_ms}ms (expires in {settings.result_ttl}s)")
             return True
             
         except Exception as e:
@@ -174,6 +186,11 @@ async def run_worker(concurrency: int = 4, run_once: bool = False, database_url:
                     # Set up LISTEN for job notifications
                     await listen_conn.add_listener("fastjob_new_job", notification_callback)
                     
+                    # Track last cleanup time for periodic cleanup
+                    import time
+                    last_cleanup = 0
+                    cleanup_interval = 300  # 5 minutes
+                    
                     while True:
                         try:
                             # Process jobs from all queues first
@@ -185,6 +202,19 @@ async def run_worker(concurrency: int = 4, run_once: bool = False, database_url:
                                     processed = await process_jobs(job_conn, queue)
                                     if processed:
                                         any_processed = True
+                                
+                                # Run periodic cleanup of expired jobs
+                                current_time = time.time()
+                                if current_time - last_cleanup > cleanup_interval:
+                                    try:
+                                        from fastjob.core.cleanup import cleanup_expired_jobs
+                                        cleaned = await cleanup_expired_jobs(job_conn)
+                                        last_cleanup = current_time
+                                        if cleaned > 0:
+                                            logger.debug(f"Cleaned up {cleaned} expired jobs")
+                                    except Exception as cleanup_error:
+                                        logger.warning(f"Cleanup failed: {cleanup_error}")
+                                        last_cleanup = current_time  # Prevent continuous retries
                             
                             if not any_processed:
                                 # No jobs available, wait for NOTIFY with timeout

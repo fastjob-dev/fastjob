@@ -9,6 +9,7 @@ I built FastJob on a simple, powerful idea: your database (PostgreSQL) is alread
 It's the job queue for developers who believe simple is beautiful.
 
 ## Why I Built FastJob (And Why You'll Love It)
+
 **Gorgeous APIs** - From `@fastjob.job()` to fluent scheduling, everything reads like natural language
 
 **🎯 Type-Safe Jobs**: Use Pydantic models to define your job arguments. FastJob automatically validates incoming jobs, so you can be confident your data is correct - no more mysterious job failures from bad data.
@@ -32,6 +33,7 @@ pip install fastjob
 Get FastJob running in under 5 minutes with this complete, copy-pasteable example:
 
 ### 1. Install and Setup Database
+
 ```bash
 pip install fastjob
 createdb fastjob_demo
@@ -40,6 +42,7 @@ fastjob migrate
 ```
 
 ### 2. Define Your Jobs (`jobs.py`)
+
 ```python
 import asyncio
 import fastjob
@@ -58,6 +61,7 @@ async def process_payment(order_id: int, amount: float):
 ```
 
 ### 3. Enqueue Jobs (`main.py`)
+
 ```python
 import asyncio
 from jobs import send_welcome_email, process_payment
@@ -89,6 +93,7 @@ if __name__ == "__main__":
 ```
 
 ### 4. Run the Worker
+
 ```bash
 # In one terminal - start the worker
 fastjob worker
@@ -106,6 +111,7 @@ The jobs run asynchronously, get retried automatically if they fail, and you can
 **🎯 IMPORTANT: Your job code is identical between development and production** - only worker startup differs!
 
 **Local Development (No Additional Processes):**
+
 ```python
 # Add this to your FastAPI/Django/Flask app startup
 fastjob.start_embedded_worker()
@@ -115,6 +121,7 @@ fastjob.start_embedded_worker()
 ```
 
 **Production (Rock-Solid Worker Processes):**
+
 ```bash
 # Your app runs normally (without embedded worker)
 python -m uvicorn main:app
@@ -173,16 +180,18 @@ async def shutdown():
 ```
 
 **Development deployment:**
+
 ```bash
 export FASTJOB_DEV_MODE=true
 python -m uvicorn main:app --reload  # Embedded worker starts automatically
 ```
 
 **Production deployment:**
+
 ```bash
 # FASTJOB_DEV_MODE=false (default)
 python -m uvicorn main:app           # App runs normally
-fastjob run-worker --concurrency 4   # Workers run separately
+fastjob worker --concurrency 4   # Workers run separately
 ```
 
 **🎯 The key insight**: Your business logic never changes. Only worker management differs.
@@ -270,6 +279,7 @@ stats = await fastjob.get_queue_stats()
 FastJob is more than just a job queue. When you're ready to scale, check out what our premium tiers offer:
 
 ### FastJob Pro - For Growing Applications
+
 Perfect for teams who need **recurring jobs**, **advanced scheduling**, and a **beautiful web dashboard**:
 
 ```python
@@ -299,6 +309,7 @@ fastjob dashboard  # Opens at http://localhost:6161
 ```
 
 ### FastJob Enterprise - For Production at Scale
+
 When you need **enterprise-grade monitoring**, **webhooks**, and **production observability**:
 
 - 📊 **Production Metrics**: Prometheus integration, custom dashboards, performance monitoring
@@ -344,6 +355,9 @@ FastJob is configured via environment variables:
 # Required: Database connection
 export FASTJOB_DATABASE_URL="postgresql://user:password@localhost/myapp"
 
+# Optional: Job result time-to-live in seconds (default: 0 = delete immediately)
+export FASTJOB_RESULT_TTL=0  # 0 = delete immediately, 3600 = keep 1 hour, 86400 = keep 1 day
+
 # Optional: Where to find your job functions
 export FASTJOB_JOBS_MODULE="myapp.jobs"
 
@@ -351,14 +365,42 @@ export FASTJOB_JOBS_MODULE="myapp.jobs"
 export FASTJOB_LOG_LEVEL="INFO"
 
 # Optional: Environment detection for automatic worker management
-export ENVIRONMENT="development"  # or "production"
+export FASTJOB_DEV_MODE=true
 ```
+
+### Job Result TTL (Time To Live)
+
+**By default, FastJob immediately deletes successful jobs** to keep your database clean. This matches how production job queues work - you typically only care about failed jobs.
+
+```bash
+# Default: Delete successful jobs immediately (recommended)
+export FASTJOB_RESULT_TTL=0
+
+# Keep successful jobs for 1 hour (useful for debugging)
+export FASTJOB_RESULT_TTL=3600
+
+# Keep successful jobs for 1 day (auditing/compliance)
+export FASTJOB_RESULT_TTL=86400
+
+# Keep successful jobs forever (not recommended for production)
+export FASTJOB_RESULT_TTL=999999999
+```
+
+**Automatic cleanup:**
+When TTL > 0, successful jobs get an `expires_at` timestamp and are **automatically cleaned up by workers every 5 minutes**. No additional configuration needed.
+
+**Why immediate deletion (TTL=0) is the default:**
+- Prevents database bloat in production
+- Failed jobs are always retained for debugging
+- Matches behavior of professional job queues like Sidekiq
+- Keeps your monitoring focused on actual problems
 
 ### 🔄 Development vs Production: Same Code, Different Workers
 
 **The most important thing to understand**: Your application code is **identical** between environments.
 
 **Development Configuration:**
+
 ```bash
 # .env.development
 ENVIRONMENT=development
@@ -369,6 +411,7 @@ python -m uvicorn main:app --reload
 ```
 
 **Production Configuration:**
+
 ```bash
 # .env.production
 ENVIRONMENT=production
@@ -403,6 +446,7 @@ my-project/
 ```
 
 **jobs/email.py:**
+
 ```python
 import fastjob
 
@@ -418,6 +462,7 @@ async def send_password_reset(user_id: int):
 ```
 
 **jobs/images.py:**
+
 ```python
 import fastjob
 
@@ -467,7 +512,7 @@ Type=simple
 User=myapp
 WorkingDirectory=/path/to/myapp
 Environment=FASTJOB_DATABASE_URL=postgresql://...
-ExecStart=/path/to/venv/bin/fastjob run-worker --concurrency 4
+ExecStart=/path/to/venv/bin/fastjob worker --concurrency 4
 Restart=always
 
 [Install]
@@ -481,15 +526,15 @@ FROM python:3.11
 COPY . /app
 WORKDIR /app
 RUN pip install .
-CMD ["fastjob", "run-worker", "--concurrency", "4"]
+CMD ["fastjob", "worker", "--concurrency", "4"]
 ```
 
 ### Multiple queues
 
 ```bash
 # Dedicated workers for different job types
-fastjob run-worker --queues critical,emails --concurrency 2
-fastjob run-worker --queues background --concurrency 1
+fastjob worker --queues critical,emails --concurrency 2
+fastjob worker --queues background --concurrency 1
 ```
 
 ## Testing
@@ -505,11 +550,13 @@ python -m pytest tests/ -v
 I've built additional packages for teams that need more:
 
 **FastJob Pro** adds:
+
 - Web dashboard for monitoring jobs
 - Recurring jobs (cron-style scheduling)
 - Advanced scheduling features
 
 **FastJob Enterprise** adds:
+
 - Metrics and performance monitoring
 - Structured logging
 - Webhook notifications
