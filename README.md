@@ -10,15 +10,15 @@ It's the job queue for developers who believe simple is beautiful.
 
 ## FastJob vs The Competition
 
-| Feature | Celery | RQ | FastJob |
-|---------|--------|----|---------|
-| **Setup Complexity** | Redis/RabbitMQ required | Redis required | ✅ Uses your PostgreSQL |
-| **Development** | Separate worker process | Separate worker process | ✅ Embedded in your app |
-| **Type Safety** | Manual validation | Manual validation | ✅ Automatic with Pydantic |
-| **Async Support** | Limited/clunky | None (sync only) | ✅ Native asyncio |
-| **Web Dashboard** | Flower (separate install) | Basic (separate) | ✅ Built-in (Pro) |
-| **Job Scheduling** | Celery Beat (complex) | External cron needed | ✅ Built-in (Pro) |
-| **Learning Curve** | Steep | Moderate | ✅ Gentle |
+| Feature              | Celery                    | RQ                      | FastJob                    |
+| -------------------- | ------------------------- | ----------------------- | -------------------------- |
+| **Setup Complexity** | Redis/RabbitMQ required   | Redis required          | ✅ Uses your PostgreSQL    |
+| **Development**      | Separate worker process   | Separate worker process | ✅ Embedded in your app    |
+| **Type Safety**      | Manual validation         | Manual validation       | ✅ Automatic with Pydantic |
+| **Async Support**    | Limited/clunky            | None (sync only)        | ✅ Native asyncio          |
+| **Web Dashboard**    | Flower (separate install) | Basic (separate)        | ✅ Built-in (Pro)          |
+| **Job Scheduling**   | Celery Beat (complex)     | External cron needed    | ✅ Built-in (Pro)          |
+| **Learning Curve**   | Steep                     | Moderate                | ✅ Gentle                  |
 
 ## Why I Built FastJob (And Why You'll Love It)
 
@@ -123,12 +123,14 @@ The jobs run asynchronously, get retried automatically if they fail, and you can
 The best part? Your job code stays identical between development and production.
 
 **Development:** Jobs run in your web server process (no extra setup needed)
+
 ```python
 # Add to your app startup
 fastjob.start_embedded_worker()
 ```
 
 **Production:** Jobs run in separate worker processes (better for scale)
+
 ```bash
 fastjob start --concurrency 4 --queues default,urgent
 ```
@@ -173,6 +175,7 @@ Same code, different worker setup.
 ## More features
 
 **Type validation:** Use Pydantic models to validate job arguments automatically
+
 ```python
 class EmailJobArgs(BaseModel):
     to: str
@@ -186,6 +189,7 @@ async def send_email(to: str, subject: str, user_id: int):
 ```
 
 **Priority queues:** Important jobs get processed first
+
 ```python
 @fastjob.job(priority=1, queue="critical")    # High priority
 async def emergency_alert():
@@ -197,6 +201,7 @@ async def cleanup_old_files():
 ```
 
 **Job scheduling:** Run jobs later
+
 ```python
 from datetime import timedelta
 
@@ -204,10 +209,11 @@ from datetime import timedelta
 await fastjob.schedule(send_reminder, run_in=timedelta(hours=1), user_id=123)
 
 # Run at specific time
-await fastjob.schedule(send_reminder, run_at=datetime(2024, 12, 25, 9, 0))
+await fastjob.schedule(send_reminder, run_at=datetime(2025, 12, 25, 9, 0))
 ```
 
 **Job management:** Check on your jobs
+
 ```python
 status = await fastjob.get_job_status(job_id)
 await fastjob.cancel_job(job_id)           # Cancel if not started
@@ -220,6 +226,7 @@ jobs = await fastjob.list_jobs(status="failed", limit=10)
 As your app grows, you might need additional features:
 
 **FastJob Pro** adds recurring jobs and a web dashboard:
+
 ```python
 # Recurring jobs (same API, no code changes)
 fastjob.every("10m").do(cleanup_temp_files)
@@ -230,6 +237,7 @@ fastjob status --verbose  # CLI status or use Pro web dashboard
 ```
 
 **FastJob Enterprise** adds production monitoring:
+
 - Performance metrics and alerting
 - Webhook notifications (Slack, etc.)
 - Structured logging for your monitoring stack
@@ -257,7 +265,7 @@ fastjob status --verbose --jobs
 **Command details:**
 
 - **`fastjob setup`** - Initialize/update database schema (replaces migrations)
-- **`fastjob start`** - Start worker to process jobs (replaces worker command)  
+- **`fastjob start`** - Start worker to process jobs (replaces worker command)
 - **`fastjob status`** - Show system health, job stats, and queue info (replaces health/jobs/queues)
 
 ## Configuration
@@ -295,7 +303,6 @@ export FASTJOB_RESULT_TTL=86400  # 1 day
 
 When TTL > 0, workers automatically clean up expired jobs every 5 minutes.
 
-
 ## Job organization
 
 FastJob automatically finds your jobs. Just create a `jobs/` folder:
@@ -310,6 +317,7 @@ my-project/
 ```
 
 **jobs/email.py:**
+
 ```python
 import fastjob
 
@@ -367,6 +375,7 @@ fastjob start --queues background --concurrency 1
 ### From Celery
 
 **Replace this Celery setup:**
+
 ```python
 # Celery setup (complex)
 from celery import Celery
@@ -382,6 +391,7 @@ def send_email(self, user_email, subject):
 ```
 
 **With this FastJob equivalent:**
+
 ```python
 # FastJob (simple)
 import fastjob
@@ -398,6 +408,7 @@ fastjob.start_embedded_worker()
 ```
 
 **Key differences:**
+
 - ✅ **No Redis/RabbitMQ** - uses your existing PostgreSQL
 - ✅ **Embedded development mode** - no separate worker process needed locally
 - ✅ **Type safety** - Pydantic validation built-in
@@ -406,6 +417,7 @@ fastjob.start_embedded_worker()
 ### From RQ
 
 **Replace this RQ setup:**
+
 ```python
 # RQ (sync only)
 from rq import Queue
@@ -421,6 +433,7 @@ job = q.enqueue(process_data, data)
 ```
 
 **With FastJob:**
+
 ```python
 # FastJob (async-first)
 import fastjob
@@ -434,6 +447,7 @@ await fastjob.enqueue(process_data, data={"key": "value"})
 ```
 
 **Migration benefits:**
+
 - ✅ **Async support** - RQ is sync-only, FastJob is async-first
 - ✅ **No Redis dependency** - one less service to manage
 - ✅ **Better development experience** - embedded worker for local dev
@@ -441,6 +455,7 @@ await fastjob.enqueue(process_data, data={"key": "value"})
 ## Framework integration examples
 
 ### FastAPI (recommended)
+
 ```python
 from fastapi import FastAPI
 import fastjob
@@ -464,6 +479,7 @@ async def startup():
 ```
 
 ### Django
+
 ```python
 # In Django, use async views with FastJob
 from django.http import JsonResponse
@@ -481,6 +497,7 @@ async def trigger_notification(request):
 ```
 
 ### Flask
+
 ```python
 from flask import Flask
 import fastjob
@@ -507,7 +524,6 @@ pip install -e ".[dev]"
 createdb fastjob_test
 python -m pytest tests/ -v
 ```
-
 
 ## Why I built this
 
