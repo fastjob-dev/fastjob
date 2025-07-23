@@ -8,6 +8,18 @@ I built FastJob on a simple, powerful idea: your database (PostgreSQL) is alread
 
 It's the job queue for developers who believe simple is beautiful.
 
+## FastJob vs The Competition
+
+| Feature | Celery | RQ | FastJob |
+|---------|--------|----|---------|
+| **Setup Complexity** | Redis/RabbitMQ required | Redis required | ✅ Uses your PostgreSQL |
+| **Development** | Separate worker process | Separate worker process | ✅ Embedded in your app |
+| **Type Safety** | Manual validation | Manual validation | ✅ Automatic with Pydantic |
+| **Async Support** | Limited/clunky | None (sync only) | ✅ Native asyncio |
+| **Web Dashboard** | Flower (separate install) | Basic (separate) | ✅ Built-in (Pro) |
+| **Job Scheduling** | Celery Beat (complex) | External cron needed | ✅ Built-in (Pro) |
+| **Learning Curve** | Steep | Moderate | ✅ Gentle |
+
 ## Why I Built FastJob (And Why You'll Love It)
 
 **Gorgeous APIs** - From `@fastjob.job()` to fluent scheduling, everything reads like natural language
@@ -106,246 +118,126 @@ python main.py
 
 The jobs run asynchronously, get retried automatically if they fail, and you can monitor everything with `fastjob jobs list`.
 
-### The Development Experience You've Been Waiting For
+### Development vs Production: Same Code, Different Setup
 
-**🎯 IMPORTANT: Your job code is identical between development and production** - only worker startup differs!
+The best part? Your job code stays identical between development and production.
 
-**Local Development (No Additional Processes):**
-
+**Development:** Jobs run in your web server process (no extra setup needed)
 ```python
-# Add this to your FastAPI/Django/Flask app startup
+# Add to your app startup
 fastjob.start_embedded_worker()
-
-# That's it! Jobs now run in your web server process
-# Same job definitions, same enqueuing code, same everything
 ```
 
-**Production (Rock-Solid Worker Processes):**
-
+**Production:** Jobs run in separate worker processes (better for scale)
 ```bash
-# Your app runs normally (without embedded worker)
-python -m uvicorn main:app
-
-# Separate process runs the workers - same job code!
-fastjob worker --concurrency 4 --queues default,critical
+fastjob worker --concurrency 4
 ```
 
-**🔑 Key Point**: Your `@fastjob.job()` functions and `await fastjob.enqueue()` calls are **exactly the same** in both environments. Only the worker startup changes.
+Same `@fastjob.job()` functions, same `enqueue()` calls. Just different worker management.
 
-## Real-world example: Same code, works everywhere
+## A practical example
 
-Here's how I use FastJob in a typical web app - **this exact code works in both development and production**:
+Here's a typical FastAPI app using FastJob:
 
 ```python
 from fastapi import FastAPI
 import fastjob
-import os
 
 app = FastAPI()
 
-# ✅ These job definitions are IDENTICAL everywhere
 @fastjob.job(retries=3)
 async def resize_uploaded_image(user_id: int, image_path: str):
-    # Resize image, upload to CDN, update database
-    # This exact function works in development AND production
+    # Your actual image processing logic here
     pass
 
-@fastjob.job(queue="emails", retries=2)
-async def send_notification(user_id: int, message: str):
-    # Send push notification or email
-    # This exact function works in development AND production
-    pass
-
-# ✅ This API endpoint is IDENTICAL everywhere
 @app.post("/upload-photo/")
 async def upload_photo(user_id: int, image_data: bytes):
-    # Save the raw image
     image_path = save_image(image_data)
 
-    # This enqueuing code is IDENTICAL in development and production
+    # Enqueue the background job
     await fastjob.enqueue(resize_uploaded_image, user_id=user_id, image_path=image_path)
 
     return {"status": "uploaded", "processing": "queued"}
 
-# 🔄 Same code works in development and production
 @app.on_event("startup")
 async def startup():
     if fastjob.run_in_dev_mode():
-        fastjob.start_embedded_worker()  # Only in development
-
-@app.on_event("shutdown")
-async def shutdown():
-    if fastjob.run_in_dev_mode():
-        await fastjob.stop_embedded_worker()
+        fastjob.start_embedded_worker()
 ```
 
-**Development deployment:**
+**Development:** `FASTJOB_DEV_MODE=true python -m uvicorn main:app`
+**Production:** `python -m uvicorn main:app` + `fastjob worker`
 
-```bash
-export FASTJOB_DEV_MODE=true
-python -m uvicorn main:app --reload  # Embedded worker starts automatically
-```
+Same code, different worker setup.
 
-**Production deployment:**
+## More features
 
-```bash
-# FASTJOB_DEV_MODE=false (default)
-python -m uvicorn main:app           # App runs normally
-fastjob worker --concurrency 4   # Workers run separately
-```
-
-**🎯 The key insight**: Your business logic never changes. Only worker management differs.
-
-## Advanced features
-
-### Type validation with Pydantic
-
+**Type validation:** Use Pydantic models to validate job arguments automatically
 ```python
-from pydantic import BaseModel
-
 class EmailJobArgs(BaseModel):
     to: str
     subject: str
-    body: str
     user_id: int
 
 @fastjob.job(args_model=EmailJobArgs)
-async def send_email(to: str, subject: str, body: str, user_id: int):
-    # FastJob validates arguments before running
+async def send_email(to: str, subject: str, user_id: int):
+    # Arguments are validated before the job runs
     pass
 ```
 
-### Priority queues
-
+**Priority queues:** Important jobs get processed first
 ```python
-# Critical jobs get processed first
-@fastjob.job(priority=1, queue="critical")
+@fastjob.job(priority=1, queue="critical")    # High priority
 async def emergency_alert():
     pass
 
-# Background cleanup can wait
-@fastjob.job(priority=100, queue="maintenance")
+@fastjob.job(priority=100, queue="background") # Low priority
 async def cleanup_old_files():
     pass
 ```
 
-### Scheduling jobs
-
+**Job scheduling:** Run jobs later
 ```python
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-# Schedule at specific datetime
-await fastjob.schedule(
-    send_reminder,
-    run_at=datetime.now() + timedelta(hours=24),
-    user_id=123
-)
+# Run in 1 hour
+await fastjob.schedule(send_reminder, run_in=timedelta(hours=1), user_id=123)
 
-# Schedule after delay (seconds)
-await fastjob.schedule(
-    send_reminder,
-    run_in=86400,  # 24 hours in seconds
-    user_id=123
-)
-
-# Schedule using timedelta (more readable)
-await fastjob.schedule(
-    send_reminder,
-    run_in=timedelta(hours=24),
-    user_id=123
-)
+# Run at specific time
+await fastjob.schedule(send_reminder, run_at=datetime(2024, 12, 25, 9, 0))
 ```
 
-### Job introspection that actually helps
-
+**Job management:** Check on your jobs
 ```python
-# Check on your jobs like a pro
 status = await fastjob.get_job_status(job_id)
-print(f"Job {job_id} is {status}")
-
-# Cancel jobs that haven't started yet
-cancelled = await fastjob.cancel_job(job_id)
-
-# Retry failed jobs
-retried = await fastjob.retry_job(job_id)
-
-# Get job insights
+await fastjob.cancel_job(job_id)           # Cancel if not started
+await fastjob.retry_job(job_id)            # Retry failed job
 jobs = await fastjob.list_jobs(status="failed", limit=10)
-stats = await fastjob.get_queue_stats()
 ```
 
-## 🚀 What's Next?
+## Need more?
 
-FastJob is more than just a job queue. When you're ready to scale, check out what our premium tiers offer:
+As your app grows, you might need additional features:
 
-### FastJob Pro - For Growing Applications
-
-Perfect for teams who need **recurring jobs**, **advanced scheduling**, and a **beautiful web dashboard**:
-
+**FastJob Pro** adds recurring jobs and a web dashboard:
 ```python
-# Recurring jobs with the same beautiful API
-import fastjob  # Same import - zero code changes needed!
-
-# Cron-style scheduling that feels natural
-fastjob.schedule("*/15 * * * *").job(check_system_health)
+# Recurring jobs (same API, no code changes)
+fastjob.every("10m").do(cleanup_temp_files)
 fastjob.schedule("0 9 * * 1-5").job(send_daily_report)
 
-# Human-readable scheduling
-fastjob.every("10m").do(cleanup_temp_files)
-fastjob.every("1h").do(process_analytics)
-
-# Fluent advanced scheduling
-await fastjob.schedule_job(generate_report)\
-    .next_monday()\
-    .at_time("09:00")\
-    .with_priority(1)\
-    .enqueue(report_type="weekly")
-
-# Start the scheduler (one line!)
-await fastjob.start_recurring_scheduler()
-
-# Built-in dashboard
-fastjob dashboard  # Opens at http://localhost:6161
+# Web dashboard
+fastjob dashboard  # http://localhost:6161
 ```
 
-### FastJob Enterprise - For Production at Scale
+**FastJob Enterprise** adds production monitoring:
+- Performance metrics and alerting
+- Webhook notifications (Slack, etc.)
+- Structured logging for your monitoring stack
+- Advanced failure analysis
 
-When you need **enterprise-grade monitoring**, **webhooks**, and **production observability**:
+**Upgrading:** Just `pip install fastjob-pro` or `fastjob-enterprise` - your existing code doesn't change.
 
-- 📊 **Production Metrics**: Prometheus integration, custom dashboards, performance monitoring
-- 🔔 **Smart Webhooks**: Get notified in Slack when jobs fail, integrate with your existing systems
-- 📝 **Structured Logging**: Machine-parseable logs that work with your ELK stack, Datadog, etc.
-- 🎯 **Dead Letter Management**: Advanced failure analysis and bulk retry operations
-- 🔒 **Enterprise Security**: Audit logs, role-based access, compliance features
-
-**Migration**: `pip install fastjob-enterprise` - still zero code changes required.
-
-### 🏗️ Built on Solid Plugin Architecture
-
-FastJob uses a professional plugin system that ensures:
-
-- **Predictable imports**: `import fastjob` always works reliably
-- **IDE-friendly**: Go to Definition, autocomplete, and type checking work perfectly
-- **Independent evolution**: Free, Pro, and Enterprise packages can update independently
-- **No technical debt**: Clean architecture that scales with your needs
-
-```python
-# Your code stays exactly the same:
-import fastjob
-
-@fastjob.job()
-async def my_task():
-    pass
-
-# But you get new features automatically when you upgrade:
-# Free: fastjob.enqueue()
-# Pro: fastjob.every("5m").do() + fastjob.dashboard
-# Enterprise: fastjob.get_system_metrics() + fastjob.setup_webhooks()
-```
-
-This isn't magic - it's careful engineering that makes upgrades feel seamless.
-
-Learn more at [FastJob Pro](https://github.com/abhinavs/fastjob-pro)
+Contact me at abhinav@apiclabs.com for Pro/Enterprise licensing.
 
 ## Configuration
 
@@ -368,135 +260,47 @@ export FASTJOB_LOG_LEVEL="INFO"
 export FASTJOB_DEV_MODE=true
 ```
 
-### Job Result TTL (Time To Live)
+### Job cleanup
 
-**By default, FastJob immediately deletes successful jobs** to keep your database clean. This matches how production job queues work - you typically only care about failed jobs.
-
-```bash
-# Default: Delete successful jobs immediately (recommended)
-export FASTJOB_RESULT_TTL=0
-
-# Keep successful jobs for 1 hour (useful for debugging)
-export FASTJOB_RESULT_TTL=3600
-
-# Keep successful jobs for 1 day (auditing/compliance)
-export FASTJOB_RESULT_TTL=86400
-
-# Keep successful jobs forever (not recommended for production)
-export FASTJOB_RESULT_TTL=999999999
-```
-
-**Automatic cleanup:**
-When TTL > 0, successful jobs get an `expires_at` timestamp and are **automatically cleaned up by workers every 5 minutes**. No additional configuration needed.
-
-**Why immediate deletion (TTL=0) is the default:**
-- Prevents database bloat in production
-- Failed jobs are always retained for debugging
-- Matches behavior of professional job queues like Sidekiq
-- Keeps your monitoring focused on actual problems
-
-### 🔄 Development vs Production: Same Code, Different Workers
-
-**The most important thing to understand**: Your application code is **identical** between environments.
-
-**Development Configuration:**
+By default, successful jobs are deleted immediately to keep your database clean. Failed jobs are always kept for debugging.
 
 ```bash
-# .env.development
-ENVIRONMENT=development
-FASTJOB_DATABASE_URL="postgresql://localhost/myapp_dev"
+# Keep successful jobs for debugging
+export FASTJOB_RESULT_TTL=3600  # 1 hour
 
-# Your app automatically starts embedded worker
-python -m uvicorn main:app --reload
+# Keep for compliance/auditing
+export FASTJOB_RESULT_TTL=86400  # 1 day
 ```
 
-**Production Configuration:**
+When TTL > 0, workers automatically clean up expired jobs every 5 minutes.
 
-```bash
-# .env.production
-ENVIRONMENT=production
-FASTJOB_DATABASE_URL="postgresql://user:pass@prod-db/myapp"
 
-# Your app runs normally
-python -m uvicorn main:app
+## Job organization
 
-# Workers run separately
-fastjob worker --concurrency 4
-```
-
-**🎯 Result**: Same `@fastjob.job()` functions, same `await fastjob.enqueue()` calls, different worker management. Perfect developer experience.
-
-## 📁 Job Organization Made Simple
-
-FastJob automatically discovers your jobs - no configuration needed for most projects:
-
-### Zero-config approach (recommended)
-
-Create a `jobs/` directory in your project root:
+FastJob automatically finds your jobs. Just create a `jobs/` folder:
 
 ```
 my-project/
-├── main.py          # Your web app
-├── jobs/            # ✅ FastJob finds this automatically
-│   ├── __init__.py  # Empty file
-│   ├── email.py     # Email-related jobs
-│   ├── images.py    # Image processing jobs
-│   └── reports.py   # Report generation jobs
-└── requirements.txt
+├── main.py
+├── jobs/
+│   ├── __init__.py
+│   ├── email.py     # Email jobs
+│   └── images.py    # Image processing jobs
 ```
 
 **jobs/email.py:**
-
 ```python
 import fastjob
 
-@fastjob.job(retries=3, queue="emails")
+@fastjob.job(retries=3)
 async def send_welcome_email(user_email: str, name: str):
-    # Your email logic here
-    pass
-
-@fastjob.job(retries=2, queue="emails")
-async def send_password_reset(user_id: int):
-    # Your password reset logic
+    # Your email logic
     pass
 ```
 
-**jobs/images.py:**
+FastJob finds and registers all `@fastjob.job()` functions automatically.
 
-```python
-import fastjob
-
-@fastjob.job(retries=1, queue="media")
-async def resize_image(image_path: str, width: int, height: int):
-    # Your image processing logic
-    pass
-
-@fastjob.job(queue="media")
-async def generate_thumbnail(image_path: str):
-    # Your thumbnail generation logic
-    pass
-```
-
-**That's it!** FastJob finds and imports all jobs automatically when workers start.
-
-### Custom job module (advanced)
-
-If you prefer a different structure:
-
-```bash
-export FASTJOB_JOBS_MODULE="myapp.background_tasks"
-```
-
-FastJob will then look for jobs in `myapp/background_tasks/` instead.
-
-### 🔍 How job discovery works
-
-1. **FastJob looks for `FASTJOB_JOBS_MODULE`** (default: `"jobs"`)
-2. **Falls back to `jobs/` directory** in your project root
-3. **Imports all Python files** and registers `@fastjob.job()` functions
-4. **Works with packages or individual files** - your choice
-
-The beauty is that jobs are discovered automatically, so you can focus on writing them, not configuring them.
+**Custom location:** Set `FASTJOB_JOBS_MODULE="myapp.tasks"` to use a different folder.
 
 ## Production deployment
 
@@ -537,6 +341,144 @@ fastjob worker --queues critical,emails --concurrency 2
 fastjob worker --queues background --concurrency 1
 ```
 
+## Migrating from other job queues
+
+### From Celery
+
+**Replace this Celery setup:**
+```python
+# Celery setup (complex)
+from celery import Celery
+app = Celery('myapp', broker='redis://localhost:6379/0')
+
+@app.task(bind=True, autoretry_for=(Exception,), retry_kwargs={'max_retries': 3})
+def send_email(self, user_email, subject):
+    # Your logic here
+    pass
+
+# Separate worker process required
+# celery -A myapp worker --loglevel=info
+```
+
+**With this FastJob equivalent:**
+```python
+# FastJob (simple)
+import fastjob
+
+@fastjob.job(retries=3)
+async def send_email(user_email: str, subject: str):
+    # Same logic, but with type safety
+    pass
+
+# Development: embedded worker
+fastjob.start_embedded_worker()
+
+# Production: fastjob worker
+```
+
+**Key differences:**
+- ✅ **No Redis/RabbitMQ** - uses your existing PostgreSQL
+- ✅ **Embedded development mode** - no separate worker process needed locally
+- ✅ **Type safety** - Pydantic validation built-in
+- ✅ **Modern async** - no sync/async complexity
+
+### From RQ
+
+**Replace this RQ setup:**
+```python
+# RQ (sync only)
+from rq import Queue
+from redis import Redis
+redis_conn = Redis()
+q = Queue(connection=redis_conn)
+
+def process_data(data):
+    # Sync function only
+    pass
+
+job = q.enqueue(process_data, data)
+```
+
+**With FastJob:**
+```python
+# FastJob (async-first)
+import fastjob
+
+@fastjob.job()
+async def process_data(data: dict):
+    # Async with type validation
+    pass
+
+await fastjob.enqueue(process_data, data={"key": "value"})
+```
+
+**Migration benefits:**
+- ✅ **Async support** - RQ is sync-only, FastJob is async-first
+- ✅ **No Redis dependency** - one less service to manage
+- ✅ **Better development experience** - embedded worker for local dev
+
+## Framework integration examples
+
+### FastAPI (recommended)
+```python
+from fastapi import FastAPI
+import fastjob
+
+app = FastAPI()
+
+@fastjob.job()
+async def process_upload(file_id: int):
+    # Process file in background
+    pass
+
+@app.post("/upload/")
+async def upload_file(file_id: int):
+    await fastjob.enqueue(process_upload, file_id=file_id)
+    return {"status": "processing"}
+
+@app.on_event("startup")
+async def startup():
+    if fastjob.run_in_dev_mode():
+        fastjob.start_embedded_worker()
+```
+
+### Django
+```python
+# In Django, use async views with FastJob
+from django.http import JsonResponse
+import fastjob
+
+@fastjob.job()
+async def send_notification(user_id: int):
+    # Send notification logic
+    pass
+
+async def trigger_notification(request):
+    user_id = request.POST.get('user_id')
+    await fastjob.enqueue(send_notification, user_id=int(user_id))
+    return JsonResponse({"status": "queued"})
+```
+
+### Flask
+```python
+from flask import Flask
+import fastjob
+import asyncio
+
+app = Flask(__name__)
+
+@fastjob.job()
+async def background_task(data: str):
+    # Your async background task
+    pass
+
+@app.route('/trigger')
+def trigger():
+    # Use asyncio.run for sync Flask integration
+    asyncio.run(fastjob.enqueue(background_task, data="test"))
+    return {"status": "queued"}
+```
+
 ## Testing
 
 ```bash
@@ -545,24 +487,6 @@ createdb fastjob_test
 python -m pytest tests/ -v
 ```
 
-## Upgrading to Pro/Enterprise
-
-I've built additional packages for teams that need more:
-
-**FastJob Pro** adds:
-
-- Web dashboard for monitoring jobs
-- Recurring jobs (cron-style scheduling)
-- Advanced scheduling features
-
-**FastJob Enterprise** adds:
-
-- Metrics and performance monitoring
-- Structured logging
-- Webhook notifications
-- Dead letter queue management
-
-Contact me at abhinav@apiclabs.com for commercial licensing.
 
 ## Why I built this
 
