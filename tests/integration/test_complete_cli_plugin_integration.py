@@ -172,7 +172,7 @@ class TestCoreAndPluginCommandCoexistence:
             mock_plugin_manager.call_hook.assert_called_once()
             
             # Core commands should still work (test that we didn't break arg parsing)
-            with patch('sys.argv', ['fastjob', 'migrate', '--help']):
+            with patch('sys.argv', ['fastjob', 'setup', '--help']):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 0

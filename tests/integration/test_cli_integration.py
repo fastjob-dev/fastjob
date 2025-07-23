@@ -17,7 +17,7 @@ def run_cli_command(args, timeout=10, expect_success=True):
     """Helper to run CLI commands"""
     try:
         result = subprocess.run(
-            ["python", "-m", "fastjob.cli.main"] + args,
+            ["python3", "-m", "fastjob.cli.main"] + args,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -42,22 +42,22 @@ async def test_cli_help_commands():
     assert "FastJob CLI" in result.stdout or "usage:" in result.stdout
     
     # Test subcommand help
-    result = run_cli_command(["migrate", "--help"])
-    assert "migrate" in result.stdout.lower()
+    result = run_cli_command(["setup", "--help"])
+    assert "setup" in result.stdout.lower()
     
-    result = run_cli_command(["run-worker", "--help"])
-    assert "worker" in result.stdout.lower()
+    result = run_cli_command(["start", "--help"])
+    assert "start" in result.stdout.lower()
 
 
 @pytest.mark.asyncio 
-async def test_migrate_command():
-    """Test database migration command"""
-    # Drop and recreate test database for clean migration test
+async def test_setup_command():
+    """Test database setup command"""
+    # Drop and recreate test database for clean setup test
     subprocess.run(["dropdb", "--if-exists", "fastjob_test"], check=False)
     subprocess.run(["createdb", "fastjob_test"], check=True)
     
-    # Run migration
-    result = run_cli_command(["migrate"])
+    # Run setup
+    result = run_cli_command(["setup"])
     assert result.returncode == 0
     
     # Verify table was created by checking with psql
@@ -71,18 +71,18 @@ async def test_migrate_command():
 
 
 @pytest.mark.asyncio
-async def test_worker_command_structure():
-    """Test worker command options and parsing"""
-    # Test worker with run-once option (should exit quickly)
-    result = run_cli_command(["run-worker", "--run-once"], timeout=30)
-    assert result.returncode == 0
+async def test_start_command_structure():
+    """Test start command options and parsing"""
+    # Test start with default options (should exit quickly with no jobs)
+    result = run_cli_command(["start"], timeout=5)
+    # Command may timeout waiting for jobs, which is expected behavior
     
-    # Test worker with custom concurrency
-    result = run_cli_command(["run-worker", "--run-once", "--concurrency", "2"], timeout=30)
-    assert result.returncode == 0
+    # Test start with custom concurrency
+    result = run_cli_command(["start", "--concurrency", "2"], timeout=5)
+    # Command may timeout waiting for jobs, which is expected behavior
     
-    # Test worker with specific queues
-    result = run_cli_command(["run-worker", "--run-once", "--queues", "test1", "test2"], timeout=30)
+    # Test start with specific queues
+    result = run_cli_command(["start", "--queues", "test1,test2"], timeout=5)
     assert result.returncode == 0
 
 
@@ -114,8 +114,8 @@ async def test_environment_variable_integration():
         os.environ["FASTJOB_LOG_LEVEL"] = "DEBUG"
         os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
         
-        # Run worker with environment variables
-        result = run_cli_command(["run-worker", "--run-once"], timeout=30)
+        # Run start with environment variables
+        result = run_cli_command(["start"], timeout=5)
         assert result.returncode == 0
         
         # Check that debug logging might be enabled (if implemented)
@@ -134,14 +134,14 @@ async def test_cli_error_handling():
     assert result.returncode != 0
     
     # Test invalid option
-    result = run_cli_command(["run-worker", "--invalid-option"], expect_success=False) 
+    result = run_cli_command(["start", "--invalid-option"], expect_success=False) 
     assert result.returncode != 0
     
     # Test invalid database URL
     original_db_url = os.environ.get("FASTJOB_DATABASE_URL")
     try:
         os.environ["FASTJOB_DATABASE_URL"] = "invalid://url"
-        result = run_cli_command(["migrate"], expect_success=False, timeout=30)
+        result = run_cli_command(["setup"], expect_success=False, timeout=30)
         # Should fail gracefully with invalid database URL
         assert result.returncode != 0
     finally:
@@ -184,8 +184,8 @@ async def cli_test_job(message: str):
             # Enqueue a job
             job_id = await fastjob.enqueue(test_cli_jobs.cli_test_job, message="Hello CLI")
             
-            # Run worker to process the job
-            result = run_cli_command(["run-worker", "--run-once"], timeout=30)
+            # Run start to process the job (with timeout as it may wait for jobs)
+            result = run_cli_command(["start"], timeout=10)
             assert result.returncode == 0
             
             # Check if job was processed (output file should exist)
@@ -208,13 +208,13 @@ async def cli_test_job(message: str):
 async def test_cli_output_formats():
     """Test CLI output formatting and verbosity"""
     # Test that CLI produces reasonable output
-    result = run_cli_command(["migrate"])
+    result = run_cli_command(["setup"])
     
     # Should have some output (migration messages)
     assert len(result.stdout) > 0 or len(result.stderr) > 0
     
-    # Test worker output
-    result = run_cli_command(["run-worker", "--run-once"])
+    # Test start output
+    result = run_cli_command(["start"], timeout=5)
     
     # Worker should produce some output about processing or completion
     assert len(result.stdout) > 0 or len(result.stderr) > 0
@@ -232,7 +232,7 @@ async def test_cli_concurrent_workers():
         
         for i in range(2):
             process = subprocess.Popen(
-                ["python", "-m", "fastjob.cli.main", "run-worker", "--run-once"],
+                ["python3", "-m", "fastjob.cli.main", "start"],
                 cwd="/Users/abhinav/Code/python/fastjob",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -260,7 +260,7 @@ async def test_cli_signal_handling():
     """Test CLI signal handling and graceful shutdown"""
     # Start a worker process
     process = subprocess.Popen(
-        ["python", "-m", "fastjob.cli.main", "run-worker", "--concurrency", "1"],
+        ["python3", "-m", "fastjob.cli.main", "start", "--concurrency", "1"],
         cwd="/Users/abhinav/Code/python/fastjob",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

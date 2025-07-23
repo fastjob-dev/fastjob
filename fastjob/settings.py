@@ -201,3 +201,41 @@ FASTJOB_DATABASE_URL = settings.database_url
 FASTJOB_JOBS_MODULE = settings.jobs_module
 FASTJOB_DEV_MODE = settings.dev_mode
 FASTJOB_RESULT_TTL = settings.result_ttl
+
+
+# Development helper functions (moved from helpers.py)
+def is_dev_mode() -> bool:
+    """
+    Check if FastJob should run in development mode.
+    
+    Development mode enables:
+    - Embedded worker auto-start
+    - Enhanced debugging
+    - Local-friendly defaults
+    
+    Controlled by FASTJOB_DEV_MODE environment variable.
+    
+    Returns:
+        bool: True if in development mode
+        
+    Examples:
+        # In your app startup
+        @app.on_event("startup")
+        async def startup():
+            if fastjob.is_dev_mode():
+                fastjob.start_embedded_worker()
+                
+        # Or more explicit
+        @app.on_event("startup") 
+        async def startup():
+            # Development: FASTJOB_DEV_MODE=true
+            # Production: FASTJOB_DEV_MODE=false (default)
+            if fastjob.is_dev_mode():
+                fastjob.start_embedded_worker()
+    """
+    return get_settings().dev_mode
+
+
+def run_in_dev_mode() -> bool:
+    """Alias for is_dev_mode() for backward compatibility."""
+    return is_dev_mode()

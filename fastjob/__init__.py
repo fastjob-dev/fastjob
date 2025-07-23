@@ -12,7 +12,7 @@ from .local import (
     start_embedded_worker, stop_embedded_worker, start_embedded_worker_async,
     is_embedded_worker_running, get_embedded_worker_status
 )
-from .helpers import run_in_dev_mode, is_dev_mode
+from .settings import run_in_dev_mode, is_dev_mode
 # Plugin system
 from .plugins import discover_and_load_plugins, get_plugin_manager, has_plugin_feature
 
@@ -41,47 +41,32 @@ __all__ = [
     "has_plugin_feature"
 ]
 
-# Plugin feature registry - plugins will register their features here
-_plugin_features = {}
+# Explicit plugin feature loading (replaces magic imports)
+def _load_plugin_features():
+    """Load plugin features explicitly at import time."""
+    try:
+        plugin_manager = get_plugin_manager()
+        
+        # Try to load Pro features if available
+        try:
+            import fastjob_pro
+            # Pro features are already imported in fastjob_pro.__init__.py
+            # and accessible via explicit imports: from fastjob_pro import schedule_job
+        except ImportError:
+            pass
+            
+        # Try to load Enterprise features if available  
+        try:
+            import fastjob_enterprise
+            # Enterprise features are already imported in fastjob_enterprise.__init__.py
+            # and accessible via explicit imports: from fastjob_enterprise import webhook_notify
+        except ImportError:
+            pass
+            
+    except Exception:
+        # Plugin loading failed, continue with base features only
+        pass
 
-def _register_plugin_feature(name: str, func):
-    """Register a plugin feature to be available in the fastjob namespace."""
-    _plugin_features[name] = func
-    # Add to __all__ dynamically
-    if name not in __all__:
-        __all__.append(name)
-
-def __getattr__(name: str):
-    """Dynamic attribute access for plugin features."""
-    # Check if it's a registered plugin feature
-    if name in _plugin_features:
-        return _plugin_features[name]
-
-    # Let plugins try to provide the attribute
-    plugin_manager = get_plugin_manager()
-
-    # Try to get from plugin hooks
-    results = plugin_manager.call_hook('get_attribute', name)
-    if results:
-        # Return the first non-None result
-        for result in results:
-            if result is not None:
-                return result
-
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-def __dir__():
-    """Make plugin features visible in dir() for better IDE support."""
-    # Get base module attributes
-    base_attrs = [attr for attr in globals().keys() if not attr.startswith('_')]
-
-    # Add all registered plugin features
-    plugin_features = list(_plugin_features.keys())
-
-    # Combine and deduplicate
-    all_attrs = list(set(base_attrs + plugin_features + __all__))
-
-    return sorted(all_attrs)
-
-# Load plugins at import time
+# Load plugins at import time (explicit loading instead of magic imports)
 discover_and_load_plugins()
+_load_plugin_features()

@@ -510,32 +510,28 @@ async def test_cli_integration():
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
 
-        worker_parser = subparsers.add_parser("run-worker")
-        worker_parser.add_argument("--concurrency", type=int, default=4)
-        worker_parser.add_argument("--run-once", action="store_true")
-        worker_parser.add_argument("--queues", nargs="+", default=["default"])
+        start_parser = subparsers.add_parser("start")
+        start_parser.add_argument("--concurrency", type=int, default=4)
+        start_parser.add_argument("--queues", default="default")
 
-        migrate_parser = subparsers.add_parser("migrate")
+        setup_parser = subparsers.add_parser("setup")
 
         # Test parsing different command variations
-        worker_args = parser.parse_args(
+        start_args = parser.parse_args(
             [
-                "run-worker",
+                "start",
                 "--concurrency",
                 "8",
-                "--run-once",
                 "--queues",
-                "urgent",
-                "default",
+                "urgent,default",
             ]
         )
-        assert worker_args.command == "run-worker"
-        assert worker_args.concurrency == 8
-        assert worker_args.run_once is True
-        assert worker_args.queues == ["urgent", "default"]
+        assert start_args.command == "start"
+        assert start_args.concurrency == 8
+        assert start_args.queues == "urgent,default"
 
-        migrate_args = parser.parse_args(["migrate"])
-        assert migrate_args.command == "migrate"
+        setup_args = parser.parse_args(["setup"])
+        assert setup_args.command == "setup"
 
     finally:
         await close_pool()

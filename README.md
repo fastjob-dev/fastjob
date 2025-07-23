@@ -50,7 +50,7 @@ Get FastJob running in under 5 minutes with this complete, copy-pasteable exampl
 pip install fastjob
 createdb fastjob_demo
 export FASTJOB_DATABASE_URL="postgresql://localhost/fastjob_demo"
-fastjob migrate
+fastjob setup
 ```
 
 ### 2. Define Your Jobs (`jobs.py`)
@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
 ```bash
 # In one terminal - start the worker
-fastjob worker
+fastjob start
 
 # In another terminal - enqueue the jobs
 python main.py
@@ -116,7 +116,7 @@ python main.py
 
 **🎉 That's it!** You should see your jobs being processed in the worker terminal.
 
-The jobs run asynchronously, get retried automatically if they fail, and you can monitor everything with `fastjob jobs list`.
+The jobs run asynchronously, get retried automatically if they fail, and you can monitor everything with `fastjob status`.
 
 ### Development vs Production: Same Code, Different Setup
 
@@ -130,7 +130,7 @@ fastjob.start_embedded_worker()
 
 **Production:** Jobs run in separate worker processes (better for scale)
 ```bash
-fastjob worker --concurrency 4
+fastjob start --concurrency 4 --queues default,urgent
 ```
 
 Same `@fastjob.job()` functions, same `enqueue()` calls. Just different worker management.
@@ -166,7 +166,7 @@ async def startup():
 ```
 
 **Development:** `FASTJOB_DEV_MODE=true python -m uvicorn main:app`
-**Production:** `python -m uvicorn main:app` + `fastjob worker`
+**Production:** `python -m uvicorn main:app` + `fastjob start`
 
 Same code, different worker setup.
 
@@ -225,8 +225,8 @@ As your app grows, you might need additional features:
 fastjob.every("10m").do(cleanup_temp_files)
 fastjob.schedule("0 9 * * 1-5").job(send_daily_report)
 
-# Web dashboard
-fastjob dashboard  # http://localhost:6161
+# Web dashboard (Pro)
+fastjob status --verbose  # CLI status or use Pro web dashboard
 ```
 
 **FastJob Enterprise** adds production monitoring:
@@ -238,6 +238,27 @@ fastjob dashboard  # http://localhost:6161
 **Upgrading:** Just `pip install fastjob-pro` or `fastjob-enterprise` - your existing code doesn't change.
 
 Contact me at abhinav@apiclabs.com for Pro/Enterprise licensing.
+
+## CLI Commands
+
+FastJob provides 3 simple commands for all operations:
+
+```bash
+# Setup database (run once)
+fastjob setup
+
+# Start worker process
+fastjob start --concurrency 4 --queues default,urgent
+
+# Check system status
+fastjob status --verbose --jobs
+```
+
+**Command details:**
+
+- **`fastjob setup`** - Initialize/update database schema (replaces migrations)
+- **`fastjob start`** - Start worker to process jobs (replaces worker command)  
+- **`fastjob status`** - Show system health, job stats, and queue info (replaces health/jobs/queues)
 
 ## Configuration
 
@@ -316,7 +337,7 @@ Type=simple
 User=myapp
 WorkingDirectory=/path/to/myapp
 Environment=FASTJOB_DATABASE_URL=postgresql://...
-ExecStart=/path/to/venv/bin/fastjob worker --concurrency 4
+ExecStart=/path/to/venv/bin/fastjob start --concurrency 4
 Restart=always
 
 [Install]
@@ -330,15 +351,15 @@ FROM python:3.11
 COPY . /app
 WORKDIR /app
 RUN pip install .
-CMD ["fastjob", "worker", "--concurrency", "4"]
+CMD ["fastjob", "start", "--concurrency", "4"]
 ```
 
 ### Multiple queues
 
 ```bash
 # Dedicated workers for different job types
-fastjob worker --queues critical,emails --concurrency 2
-fastjob worker --queues background --concurrency 1
+fastjob start --queues critical,emails --concurrency 2
+fastjob start --queues background --concurrency 1
 ```
 
 ## Migrating from other job queues
@@ -373,7 +394,7 @@ async def send_email(user_email: str, subject: str):
 # Development: embedded worker
 fastjob.start_embedded_worker()
 
-# Production: fastjob worker
+# Production: fastjob start
 ```
 
 **Key differences:**

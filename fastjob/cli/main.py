@@ -1,17 +1,13 @@
 """
-FastJob CLI - Simplified main module using organized command structure
+FastJob CLI - Simplified main module with consolidated commands
 """
 
 import argparse
 import asyncio
 from .colors import print_status, StatusIcon
 
-# Import organized command modules
-from .commands.worker import add_worker_command
-from .commands.migrate import add_migrate_command
-from .commands.health import add_health_commands
-from .commands.jobs import add_jobs_commands
-from .commands.queues import add_queues_commands
+# Import consolidated core commands
+from .commands.core import add_core_commands
 
 
 def load_plugin_commands(subparsers):
@@ -35,11 +31,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  fastjob worker --concurrency 4 --queues default,urgent
-  fastjob migrate
-  fastjob health --verbose
-  fastjob jobs list --status queued
-  fastjob status
+  fastjob start --concurrency 4 --queues default,urgent
+  fastjob setup
+  fastjob status --verbose --jobs
 
 For more information, visit: https://docs.fastjob.dev
         """
@@ -47,12 +41,8 @@ For more information, visit: https://docs.fastjob.dev
     
     subparsers = parser.add_subparsers(dest="command", title="Available commands")
 
-    # Add core commands using organized modules
-    add_worker_command(subparsers)
-    add_migrate_command(subparsers)
-    add_health_commands(subparsers)
-    add_jobs_commands(subparsers)
-    add_queues_commands(subparsers)
+    # Add core commands
+    add_core_commands(subparsers)
 
     # Load plugin commands (Pro, Enterprise features)
     load_plugin_commands(subparsers)
