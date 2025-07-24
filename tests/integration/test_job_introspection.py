@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import fastjob
-from .db_utils import create_test_database, drop_test_database
+from ..db_utils import create_test_database, drop_test_database
 
 
 # Some test jobs to work with

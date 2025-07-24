@@ -23,6 +23,7 @@ def add_start_command(subparsers):
     )
     start_parser.add_argument("--concurrency", type=int, default=4, help="Number of concurrent workers (default: 4)")
     start_parser.add_argument("--queues", default="default", help="Comma-separated list of queues to process (default: default)")
+    start_parser.add_argument("--run-once", action="store_true", help="Process jobs once and exit (useful for testing)")
     start_parser.set_defaults(func=handle_start_command)
 
 
@@ -57,7 +58,7 @@ async def handle_start_command(args):
     print_status(f"Processing queues: {', '.join(queues)}", "info")
     
     try:
-        await run_worker(concurrency=args.concurrency, queues=queues)
+        await run_worker(concurrency=args.concurrency, queues=queues, run_once=args.run_once)
     except KeyboardInterrupt:
         print_status("Worker stopped by user", "info")
         return 0

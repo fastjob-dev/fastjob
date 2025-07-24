@@ -10,8 +10,8 @@ from pydantic import BaseModel
 import fastjob
 
 
-# Configure structured logging
-fastjob_logger = fastjob.logging.setup_logging(level="INFO", format_type="structured")
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
 # Define job argument models
@@ -124,32 +124,31 @@ async def main():
     # 5. Scheduled job (future execution)
     print("\n5. Scheduled Job:")
     future_time = datetime.now() + timedelta(seconds=10)
-    job_id5 = (
-        await fastjob.schedule(send_email)
-        .at(future_time)
-        .enqueue(
-            to="admin@example.com",
-            subject="Scheduled Report",
-            body="Your scheduled report is ready",
-        )
+    job_id5 = await fastjob.schedule(
+        send_email,
+        run_at=future_time,
+        to="admin@example.com",
+        subject="Scheduled Report",
+        body="Your scheduled report is ready",
     )
     print(f"   Scheduled job for {future_time}: {job_id5}")
 
-    # 6. Job scheduled with fluent interface
-    print("\n6. Fluent Scheduling:")
-    job_id6 = (
-        await fastjob.schedule(generate_report)
-        .in_minutes(2)
-        .with_priority(20)
-        .enqueue(report_type="user_activity", date_range="last_7_days")
+    # 6. Job scheduled with delay
+    print("\n6. Delayed Scheduling:")
+    job_id6 = await fastjob.schedule(
+        generate_report,
+        run_in=120,  # 2 minutes (120 seconds)
+        priority=20,
+        report_type="user_activity", 
+        date_range="last_7_days"
     )
     print(f"   Job scheduled for 2 minutes: {job_id6}")
 
     # 7. Convenience scheduling functions
     print("\n7. Convenience Scheduling:")
-    job_id7 = await fastjob.schedule_in(
+    job_id7 = await fastjob.schedule(
         flaky_task,
-        5,  # 5 seconds from now
+        run_in=5,  # 5 seconds from now
         task_id="FLAKY-001",
         fail_rate=0.8,  # High failure rate to demonstrate retries
     )
@@ -163,40 +162,39 @@ async def main():
     print("   Processing jobs for 15 seconds...")
     await asyncio.sleep(15)
 
-    # 9. Get metrics
-    print("\n9. Job Metrics:")
-    from fastjob.metrics import get_metrics_collector
+    # 9. Get basic queue statistics 
+    print("\n9. Queue Statistics:")
+    queue_stats = await fastjob.get_queue_stats()
+    
+    if queue_stats:
+        for queue in queue_stats:
+            print(f"   Queue '{queue['queue']}':")
+            print(f"     Total jobs: {queue['total_jobs']}")
+            print(f"     Queued: {queue['queued']}")
+            print(f"     Done: {queue['done']}")
+            print(f"     Failed: {queue['failed']}")
+            print(f"     Cancelled: {queue['cancelled']}")
+    else:
+        print("   No queue statistics available yet")
 
-    metrics = get_metrics_collector()
-    system_metrics = await metrics.get_system_metrics(time_window_hours=1)
-
-    print(f"   Total jobs: {system_metrics.total_jobs}")
-    print(f"   Completed: {system_metrics.completed_jobs}")
-    print(f"   Queued: {system_metrics.queued_jobs}")
-    print(f"   Success rate: {system_metrics.success_rate}%")
-    print(f"   Avg processing time: {system_metrics.avg_processing_time_ms}ms")
-
-    # 10. Check dead letter queue
-    print("\n10. Dead Letter Queue:")
-    from fastjob.dead_letter import get_dead_letter_queue
-
-    dlq = get_dead_letter_queue()
-    dead_jobs = await dlq.get_dead_letter_jobs(limit=10)
-    dlq_stats = await dlq.get_dead_letter_stats()
-
-    print(f"    Dead letter jobs: {dlq_stats['total_dead_jobs']}")
-    if dead_jobs:
-        print("    Recent dead letter jobs:")
-        for job in dead_jobs[:3]:
-            print(f"      - {job['job_name']} (attempts: {job['attempts']})")
+    # 10. List recent jobs
+    print("\n10. Recent Jobs:")
+    recent_jobs = await fastjob.list_jobs(limit=5)
+    
+    if recent_jobs:
+        print("   Recent jobs:")
+        for job in recent_jobs:
+            print(f"     - {job['job_name']}: {job['status']} (queue: {job['queue']})")
+    else:
+        print("   No jobs found")
 
     # Stop worker
     await fastjob.stop_embedded_worker()
     print("\n✅ Example completed!")
     print("\nTo explore more:")
-    print("- Run 'fastjob dashboard' to see the web interface")
+    print("- Run 'fastjob status' to see queue and job statistics")
     print("- Run 'fastjob start --concurrency 4' for production")
-    print("- Check the logs above for structured logging output")
+    print("- Try pip install fastjob-pro for dashboard and advanced scheduling")
 
 
 if __name__ == "__main__":

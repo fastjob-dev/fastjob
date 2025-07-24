@@ -94,15 +94,14 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
                 """, job_id)
                 logger.info(f"Job {job_id} completed successfully in {duration_ms}ms (deleted immediately)")
             else:
-                # Keep with TTL expiration timestamp
+                # Keep with status 'done' (TTL expiration not implemented yet)
                 await conn.execute("""
                     UPDATE fastjob_jobs
                     SET status = 'done', 
-                        updated_at = NOW(),
-                        expires_at = NOW() + INTERVAL '%s seconds'
+                        updated_at = NOW()
                     WHERE id = $1
-                """, settings.result_ttl, job_id)
-                logger.info(f"Job {job_id} completed successfully in {duration_ms}ms (expires in {settings.result_ttl}s)")
+                """, job_id)
+                logger.info(f"Job {job_id} completed successfully in {duration_ms}ms (kept as done)")
             return True
             
         except Exception as e:

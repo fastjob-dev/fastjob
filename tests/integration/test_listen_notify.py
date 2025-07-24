@@ -20,13 +20,18 @@ import pytest
 import asyncio
 import time
 import statistics
+import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
-from fastjob import job, enqueue, schedule_at, schedule_in
+from fastjob import job, enqueue, schedule
 from fastjob.core.processor import run_worker
 from tests.db_utils import create_test_database, drop_test_database, clear_table
 from fastjob.db.connection import get_pool
+
+# Set up test environment
+os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
+os.environ["FASTJOB_RESULT_TTL"] = "3600"  # Keep completed jobs for test verification
 
 # Test data collection
 processed_jobs: List[Dict[str, Any]] = []
@@ -117,6 +122,11 @@ async def clean_db():
 @pytest.fixture
 async def background_worker():
     """Start a background worker for testing"""
+    # Clear settings cache to ensure environment variables are used
+    import fastjob.settings
+    fastjob.settings._settings = None
+    fastjob.settings.get_settings(reload=True)
+    
     worker_tasks = []
     
     async def start_worker(queues=None, concurrency=2):
@@ -243,9 +253,9 @@ async def test_scheduled_job_processing(test_db, clean_db, background_worker):
     
     for i, delay in enumerate(schedule_delays):
         schedule_time = datetime.fromtimestamp(current_time + delay)
-        await schedule_at(
+        await schedule(
             scheduled_timing_job,
-            when=schedule_time,
+            run_at=schedule_time,
             message=f"scheduled_{i}",
             expected_time=current_time + delay
         )

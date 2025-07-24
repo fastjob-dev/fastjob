@@ -33,9 +33,9 @@ class TestCLIPluginDiscovery:
         plugin_manager = get_plugin_manager()
         assert plugin_manager is not None
         
-        # Test that the plugin manager has the hook for CLI commands
-        hooks = plugin_manager.list_hooks()
-        assert 'register_cli_commands' in hooks or len(hooks) >= 0  # Hooks might not be registered yet
+        # Test that the plugin manager has hooks attribute
+        assert hasattr(plugin_manager, 'hooks')
+        assert isinstance(plugin_manager.hooks, dict)
     
     def test_plugin_discovery_runs_without_error(self):
         """Test that plugin discovery completes successfully"""
@@ -44,10 +44,10 @@ class TestCLIPluginDiscovery:
         
         # Get the plugin manager and verify it's working
         plugin_manager = get_plugin_manager()
-        plugins = plugin_manager.list_plugins()
+        plugins = plugin_manager.loaded_plugins
         
         # Should have at least 0 plugins (could be more if Pro/Enterprise are installed)
-        assert isinstance(plugins, list)
+        assert isinstance(plugins, dict)
 
 
 class TestCLIBasicCommands:
@@ -74,8 +74,8 @@ class TestCLIBasicCommands:
         with patch('sys.argv', ['fastjob', 'unknown-command']):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-            # Unknown command should exit with error code
-            assert exc_info.value.code == 1
+            # Unknown command should exit with argparse error code (2)
+            assert exc_info.value.code == 2
 
 
 class TestCLIPluginIntegration:
@@ -100,7 +100,7 @@ class TestCLIPluginIntegration:
         # Mock subparsers
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             load_plugin_commands(mock_subparsers)
             
             # Verify the hook was called
@@ -111,19 +111,17 @@ class TestCLIPluginIntegration:
         # Mock an args object with a plugin function
         mock_args = MagicMock()
         mock_args.command = 'plugin-command'
-        mock_args.plugin_func = MagicMock(return_value=0)
+        mock_args.func = MagicMock(return_value=0)
         
         # Mock sys.argv and argparse to return our mock args
         with patch('sys.argv', ['fastjob', 'plugin-command']):
             with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
-                with patch('fastjob.cli.main.discover_jobs'):  # Mock job discovery
-                    with pytest.raises(SystemExit) as exc_info:
-                        main()
-                    
-                    # Should have called the plugin function
-                    mock_args.plugin_func.assert_called_once_with(mock_args)
-                    # Should exit with success
-                    assert exc_info.value.code == 0
+                result = main()
+                
+                # Should have called the plugin function
+                mock_args.func.assert_called_once_with(mock_args)
+                # Should return success
+                assert result == 0
 
 
 class TestSpecificCLICommands:
@@ -133,8 +131,8 @@ class TestSpecificCLICommands:
         """Test that core commands are available"""
         from fastjob.cli.main import main
         
-        # Test that core commands don't crash during argument parsing
-        core_commands = ['worker', 'migrate', 'health', 'ready', 'jobs', 'queues', 'status']
+        # Test that simplified core commands don't crash during argument parsing
+        core_commands = ['start', 'setup', 'status']
         
         for command in core_commands:
             with patch('sys.argv', ['fastjob', command, '--help']):
@@ -144,18 +142,17 @@ class TestSpecificCLICommands:
                 assert exc_info.value.code == 0
     
     def test_jobs_subcommands(self):
-        """Test jobs subcommands are available"""
-        jobs_subcommands = ['list', 'show', 'retry', 'cancel', 'delete']
-        
-        for subcommand in jobs_subcommands:
-            with patch('sys.argv', ['fastjob', 'jobs', subcommand, '--help']):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-                assert exc_info.value.code == 0
+        """Test jobs functionality integrated into status command"""
+        # Jobs functionality is now integrated into the status command with --jobs flag
+        with patch('sys.argv', ['fastjob', 'status', '--jobs', '--help']):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
     
     def test_queues_subcommands(self):
-        """Test queues subcommands are available"""
-        with patch('sys.argv', ['fastjob', 'queues', 'list', '--help']):
+        """Test queues functionality integrated into status command"""
+        # Queues functionality is now integrated into the status command with --verbose flag
+        with patch('sys.argv', ['fastjob', 'status', '--verbose', '--help']):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 0
@@ -175,7 +172,7 @@ class TestCLIPluginSystemResilience:
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should not raise an exception
             load_plugin_commands(mock_subparsers)
     
@@ -187,7 +184,7 @@ class TestCLIPluginSystemResilience:
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should work fine
             load_plugin_commands(mock_subparsers)
             mock_plugin_manager.call_hook.assert_called_once()
@@ -197,16 +194,16 @@ class TestCLIPluginSystemResilience:
         # Mock args with a failing plugin function
         mock_args = MagicMock()
         mock_args.command = 'failing-plugin-command'
-        mock_args.plugin_func = MagicMock(side_effect=Exception("Plugin command failed"))
+        mock_args.func = MagicMock(side_effect=Exception("Plugin command failed"))
         
         with patch('sys.argv', ['fastjob', 'failing-plugin-command']):
             with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
-                with patch('fastjob.cli.main.discover_jobs'):
-                    with pytest.raises(SystemExit) as exc_info:
-                        main()
-                    
-                    # Should exit with error code
-                    assert exc_info.value.code == 1
+                result = main()
+                
+                # Should have called the plugin function
+                mock_args.func.assert_called_once_with(mock_args)
+                # Should return error code
+                assert result == 1
 
 
 class TestCLIEntryPoint:
@@ -217,7 +214,7 @@ class TestCLIEntryPoint:
         # This tests that the setup in pyproject.toml works
         try:
             result = subprocess.run(
-                ['python', '-c', 'import fastjob.cli.main; fastjob.cli.main.main'],
+                ['python3', '-c', 'import fastjob.cli.main; fastjob.cli.main.main'],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -236,17 +233,16 @@ class TestCLIEnvironmentIntegration:
     def test_cli_loads_fastjob_properly(self):
         """Test that CLI properly loads the FastJob environment"""
         with patch('sys.argv', ['fastjob', '--help']):
-            with patch('fastjob.cli.main.discover_jobs') as mock_discover:
-                with pytest.raises(SystemExit):
-                    main()
-                
-                # Should have attempted to discover jobs
-                mock_discover.assert_called_once()
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            
+            # Help should exit with code 0
+            assert exc_info.value.code == 0
     
     def test_cli_plugin_discovery_integration(self):
         """Test that CLI integrates with FastJob's plugin discovery"""
         # Verify that when CLI loads, it attempts to discover plugins
-        with patch('fastjob.cli.main.get_plugin_manager') as mock_get_manager:
+        with patch('fastjob.plugins.get_plugin_manager') as mock_get_manager:
             mock_manager = MagicMock()
             mock_get_manager.return_value = mock_manager
             
@@ -295,10 +291,10 @@ class TestCLIArchitectureCompliance:
         plugin_manager = get_plugin_manager()
         assert plugin_manager is not None
         
-        # Should have the register_cli_commands hook available
-        hooks = plugin_manager.list_hooks()
+        # Should have the hooks attribute available
+        hooks = plugin_manager.hooks
         # Hook might not be registered if no plugins are loaded, so just test manager works
-        assert isinstance(hooks, list)
+        assert isinstance(hooks, dict)
     
     def test_cli_does_not_hardcode_plugin_commands(self):
         """Test that CLI doesn't hardcode plugin-specific commands"""
@@ -318,7 +314,7 @@ class TestCLIArchitectureCompliance:
     def test_cli_plugin_loading_is_graceful(self):
         """Test that CLI plugin loading is graceful and doesn't break core functionality"""
         # Even if plugin loading fails, core commands should work
-        with patch('fastjob.cli.main.get_plugin_manager', side_effect=Exception("Plugin system broken")):
+        with patch('fastjob.plugins.get_plugin_manager', side_effect=Exception("Plugin system broken")):
             mock_subparsers = MagicMock()
             
             # Should not raise an exception

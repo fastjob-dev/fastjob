@@ -379,6 +379,7 @@ async def get_queue_stats() -> List[Dict[str, Any]]:
 
 async def schedule(
     job_func: Callable[..., Any],
+    when: Optional[Union[datetime, timedelta, int, float]] = None,
     *,
     run_at: Optional[datetime] = None,
     run_in: Optional[Union[int, float, timedelta]] = None,
@@ -389,46 +390,62 @@ async def schedule(
 
     Args:
         job_func: The job function to schedule
-        run_at: Schedule job at specific datetime (mutually exclusive with run_in)
-        run_in: Schedule job after delay. Can be:
-            - int/float: Delay in seconds from now
-            - timedelta: Delay from now
+        when: When to run the job (positional argument). Can be:
+            - datetime: Run at specific time
+            - timedelta: Run after delay from now
+            - int/float: Run after N seconds from now
+        run_at: Schedule job at specific datetime (keyword argument)
+        run_in: Schedule job after delay (keyword argument)
         **kwargs: Arguments to pass to the job function
 
     Returns:
         str: The job ID
 
     Examples:
-        # Schedule at specific datetime
+        # Schedule at specific datetime (positional)
+        await schedule(my_job, datetime(2025, 1, 15, 9, 0))
+
+        # Schedule in 30 seconds (positional)
+        await schedule(my_job, 30)
+
+        # Schedule in 2 hours using timedelta (positional)
+        await schedule(my_job, timedelta(hours=2))
+        
+        # Using keyword arguments
         await schedule(my_job, run_at=datetime(2025, 1, 15, 9, 0))
-
-        # Schedule in 30 seconds
         await schedule(my_job, run_in=30)
-
-        # Schedule in 2 hours using timedelta
-        await schedule(my_job, run_in=timedelta(hours=2))
     """
-    # Validate arguments
-    if run_at is not None and run_in is not None:
-        raise ValueError("Cannot specify both 'run_at' and 'run_in' - use only one")
-
-    if run_at is None and run_in is None:
-        raise ValueError("Must specify either 'run_at' or 'run_in'")
-
-    if run_at is not None:
-        # Schedule at specific datetime
-        scheduled_time = run_at
-    else:
-        # Schedule after delay (run_in)
-        if isinstance(run_in, (int, float)):
-            # Number of seconds - schedule after delay
-            scheduled_time = datetime.now() + timedelta(seconds=run_in)
-        elif isinstance(run_in, timedelta):
-            # Timedelta - schedule after delay
-            scheduled_time = datetime.now() + run_in
+    # Handle positional 'when' parameter
+    if when is not None:
+        if run_at is not None or run_in is not None:
+            raise ValueError("Cannot use 'when' parameter with 'run_at' or 'run_in'")
+        
+        if isinstance(when, datetime):
+            scheduled_time = when
+        elif isinstance(when, (int, float)):
+            scheduled_time = datetime.now() + timedelta(seconds=when)
+        elif isinstance(when, timedelta):
+            scheduled_time = datetime.now() + when
         else:
-            raise ValueError(
-                f"Invalid 'run_in' parameter: {type(run_in)}. Must be int/float (seconds) or timedelta"
-            )
+            raise ValueError(f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float")
+    else:
+        # Use keyword arguments
+        if run_at is not None and run_in is not None:
+            raise ValueError("Cannot specify both 'run_at' and 'run_in' - use only one")
+
+        if run_at is None and run_in is None:
+            raise ValueError("Must specify either 'when', 'run_at', or 'run_in'")
+
+        if run_at is not None:
+            scheduled_time = run_at
+        else:
+            if isinstance(run_in, (int, float)):
+                scheduled_time = datetime.now() + timedelta(seconds=run_in)
+            elif isinstance(run_in, timedelta):
+                scheduled_time = datetime.now() + run_in
+            else:
+                raise ValueError(
+                    f"Invalid 'run_in' parameter: {type(run_in)}. Must be int/float (seconds) or timedelta"
+                )
 
     return await enqueue(job_func, scheduled_at=scheduled_time, **kwargs)

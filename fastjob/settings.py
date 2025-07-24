@@ -9,8 +9,21 @@ import os
 from typing import Optional, List
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, ValidationError, field_validator
+from pydantic_settings.sources import EnvSettingsSource
+from typing import Any, Dict, Tuple
+
+
+class CustomEnvSource(EnvSettingsSource):
+    """Custom environment source that handles comma-separated lists without JSON parsing."""
+    
+    def prepare_field_value(self, field_name: str, field: Any, value: Any, value_is_complex: bool) -> Any:
+        """Override to handle comma-separated lists for specific fields."""
+        if field_name == 'default_queues' and isinstance(value, str):
+            # Handle comma-separated queues without JSON parsing
+            return [q.strip() for q in value.split(',') if q.strip()]
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
 class FastJobSettings(BaseSettings):
@@ -22,6 +35,30 @@ class FastJobSettings(BaseSettings):
     2. Config file (if specified)
     3. Default values
     """
+    
+    model_config = SettingsConfigDict(
+        env_prefix="FASTJOB_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+    
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        """Use custom environment source."""
+        return (
+            init_settings,
+            CustomEnvSource(settings_cls),
+            dotenv_settings,
+            file_secret_settings,
+        )
     
     # Database Configuration
     database_url: str = Field(
@@ -77,6 +114,14 @@ class FastJobSettings(BaseSettings):
         description="Default job execution timeout in seconds"
     )
     
+    @field_validator('job_timeout', mode='before')
+    @classmethod
+    def parse_job_timeout(cls, v):
+        """Parse job timeout value, converting 0 to None (no timeout)."""
+        if v == '0' or v == 0:
+            return None
+        return v
+    
     # Connection Pool Settings
     db_pool_min_size: int = Field(
         default=5,
@@ -115,6 +160,17 @@ class FastJobSettings(BaseSettings):
         default=False,
         description="Enable debug mode"
     )
+    
+    @field_validator('debug', mode='before')
+    @classmethod
+    def parse_debug(cls, v):
+        """Parse debug value from environment variables, handling empty strings."""
+        if isinstance(v, str):
+            if v.lower() in ('', '0', 'false', 'f', 'no', 'n'):
+                return False
+            elif v.lower() in ('1', 'true', 't', 'yes', 'y'):
+                return True
+        return v
     
     dev_mode: bool = Field(
         default=False,
@@ -172,7 +228,7 @@ def get_settings(config_file: Optional[Path] = None, reload: bool = False) -> Fa
     Returns:
         FastJobSettings instance
     """
-    global _settings
+    global _settings, FASTJOB_DATABASE_URL, FASTJOB_JOBS_MODULE, FASTJOB_DEV_MODE, FASTJOB_RESULT_TTL
     
     if _settings is None or reload:
         try:
@@ -182,6 +238,13 @@ def get_settings(config_file: Optional[Path] = None, reload: bool = False) -> Fa
             else:
                 # Load from environment variables
                 _settings = FastJobSettings()
+                
+            # Update backward compatibility exports
+            FASTJOB_DATABASE_URL = _settings.database_url
+            FASTJOB_JOBS_MODULE = _settings.jobs_module
+            FASTJOB_DEV_MODE = _settings.dev_mode
+            FASTJOB_RESULT_TTL = _settings.result_ttl
+            
         except ValidationError as e:
             raise ValueError(f"Invalid FastJob configuration: {e}")
     

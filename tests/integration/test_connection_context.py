@@ -369,6 +369,16 @@ async def test_database_context_exception_handling():
 @pytest.mark.asyncio
 async def test_fastjob_integration_with_contexts():
     """Test integration with FastJob functionality using contexts"""
+    # Set up environment variables for testing
+    import os
+    os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
+    os.environ["FASTJOB_RESULT_TTL"] = "3600"  # Keep completed jobs for verification
+    
+    # Clear settings cache and reload
+    import fastjob.settings
+    fastjob.settings._settings = None
+    fastjob.settings.get_settings(reload=True)
+    
     await create_test_database()
     
     # Import here to avoid circular imports during test discovery

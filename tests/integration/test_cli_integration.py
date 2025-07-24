@@ -73,16 +73,16 @@ async def test_setup_command():
 @pytest.mark.asyncio
 async def test_start_command_structure():
     """Test start command options and parsing"""
-    # Test start with default options (should exit quickly with no jobs)
-    result = run_cli_command(["start"], timeout=5)
-    # Command may timeout waiting for jobs, which is expected behavior
+    # Test start with run-once option (should exit quickly with no jobs)
+    result = run_cli_command(["start", "--run-once"], timeout=5)
+    assert result.returncode == 0
     
     # Test start with custom concurrency
-    result = run_cli_command(["start", "--concurrency", "2"], timeout=5)
-    # Command may timeout waiting for jobs, which is expected behavior
+    result = run_cli_command(["start", "--concurrency", "2", "--run-once"], timeout=5)
+    assert result.returncode == 0
     
     # Test start with specific queues
-    result = run_cli_command(["start", "--queues", "test1,test2"], timeout=5)
+    result = run_cli_command(["start", "--queues", "test1,test2", "--run-once"], timeout=5)
     assert result.returncode == 0
 
 
@@ -115,7 +115,7 @@ async def test_environment_variable_integration():
         os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
         
         # Run start with environment variables
-        result = run_cli_command(["start"], timeout=5)
+        result = run_cli_command(["start", "--run-once"], timeout=5)
         assert result.returncode == 0
         
         # Check that debug logging might be enabled (if implemented)
@@ -185,7 +185,7 @@ async def cli_test_job(message: str):
             job_id = await fastjob.enqueue(test_cli_jobs.cli_test_job, message="Hello CLI")
             
             # Run start to process the job (with timeout as it may wait for jobs)
-            result = run_cli_command(["start"], timeout=10)
+            result = run_cli_command(["start", "--run-once"], timeout=10)
             assert result.returncode == 0
             
             # Check if job was processed (output file should exist)
@@ -201,23 +201,34 @@ async def cli_test_job(message: str):
                 os.remove(job_file_path)
     
     finally:
+        # Close any open connection pools before dropping database
+        from fastjob.db.connection import close_pool
+        await close_pool()
         await drop_test_database()
 
 
 @pytest.mark.asyncio
 async def test_cli_output_formats():
     """Test CLI output formatting and verbosity"""
-    # Test that CLI produces reasonable output
-    result = run_cli_command(["setup"])
+    from tests.db_utils import create_test_database, drop_test_database
     
-    # Should have some output (migration messages)
-    assert len(result.stdout) > 0 or len(result.stderr) > 0
-    
-    # Test start output
-    result = run_cli_command(["start"], timeout=5)
-    
-    # Worker should produce some output about processing or completion
-    assert len(result.stdout) > 0 or len(result.stderr) > 0
+    await create_test_database()
+    try:
+        # Test that CLI produces reasonable output
+        result = run_cli_command(["setup"])
+        
+        # Should have some output (migration messages)
+        assert len(result.stdout) > 0 or len(result.stderr) > 0
+        
+        # Test start output
+        result = run_cli_command(["start", "--run-once"], timeout=5)
+        
+        # Worker should produce some output about processing or completion
+        assert len(result.stdout) > 0 or len(result.stderr) > 0
+    finally:
+        from fastjob.db.connection import close_pool
+        await close_pool()
+        await drop_test_database()
 
 
 @pytest.mark.asyncio
@@ -232,7 +243,7 @@ async def test_cli_concurrent_workers():
         
         for i in range(2):
             process = subprocess.Popen(
-                ["python3", "-m", "fastjob.cli.main", "start"],
+                ["python3", "-m", "fastjob.cli.main", "start", "--run-once"],
                 cwd="/Users/abhinav/Code/python/fastjob",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -240,9 +251,10 @@ async def test_cli_concurrent_workers():
             )
             worker_processes.append(process)
         
-        # Wait for all workers to complete
+        # Wait for all workers to complete (should exit quickly with --run-once)
         for process in worker_processes:
-            stdout, stderr = process.communicate(timeout=30)
+            stdout, stderr = process.communicate(timeout=10)
+            # Workers should exit with 0 when no jobs are available and --run-once is used
             assert process.returncode == 0, f"Worker failed: {stderr}"
     
     finally:
@@ -252,36 +264,47 @@ async def test_cli_concurrent_workers():
                 process.terminate()
                 process.wait()
         
+        # Close any open connection pools before dropping database
+        from fastjob.db.connection import close_pool
+        await close_pool()
         await drop_test_database()
 
 
 @pytest.mark.asyncio
 async def test_cli_signal_handling():
     """Test CLI signal handling and graceful shutdown"""
-    # Start a worker process
-    process = subprocess.Popen(
-        ["python3", "-m", "fastjob.cli.main", "start", "--concurrency", "1"],
-        cwd="/Users/abhinav/Code/python/fastjob",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
+    from tests.db_utils import create_test_database, drop_test_database
     
+    await create_test_database()
     try:
-        # Let it start up
-        await asyncio.sleep(2)
+        # Start a worker process
+        process = subprocess.Popen(
+            ["python3", "-m", "fastjob.cli.main", "start", "--concurrency", "1"],
+            cwd="/Users/abhinav/Code/python/fastjob",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
         
-        # Send SIGTERM for graceful shutdown
-        process.terminate()
-        
-        # Wait for graceful shutdown
-        stdout, stderr = process.communicate(timeout=10)
-        
-        # Process should exit cleanly
-        assert process.returncode in [0, -15, 130]  # 0=clean exit, -15=SIGTERM, 130=SIGINT
-        
-    except subprocess.TimeoutExpired:
-        # Force kill if graceful shutdown failed
-        process.kill()
-        process.wait()
-        pytest.fail("Worker did not shut down gracefully")
+        try:
+            # Let it start up
+            await asyncio.sleep(2)
+            
+            # Send SIGTERM for graceful shutdown
+            process.terminate()
+            
+            # Wait for graceful shutdown
+            stdout, stderr = process.communicate(timeout=10)
+            
+            # Process should exit cleanly
+            assert process.returncode in [0, -15, 130]  # 0=clean exit, -15=SIGTERM, 130=SIGINT
+            
+        except subprocess.TimeoutExpired:
+            # Force kill if graceful shutdown failed
+            process.kill()
+            process.wait()
+            pytest.fail("Worker did not shut down gracefully")
+    finally:
+        from fastjob.db.connection import close_pool
+        await close_pool()
+        await drop_test_database()

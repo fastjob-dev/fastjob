@@ -15,6 +15,7 @@ from tests.db_utils import create_test_database, drop_test_database, clear_table
 
 import os
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
+os.environ["FASTJOB_RESULT_TTL"] = "3600"  # Keep completed jobs for test verification
 
 
 @fastjob.job(retries=1)
@@ -25,6 +26,11 @@ async def scheduled_job(message: str):
 @pytest.mark.asyncio
 async def test_immediate_vs_scheduled_jobs():
     """Test that scheduled jobs don't run until their scheduled time"""
+    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
+    import fastjob.settings
+    fastjob.settings._settings = None
+    fastjob.settings.get_settings(reload=True)
+    
     await create_test_database()
     try:
         pool = await get_pool()
@@ -109,6 +115,11 @@ async def test_priority_ordering():
 @pytest.mark.asyncio
 async def test_queue_isolation():
     """Test that jobs in different queues are isolated"""
+    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
+    import fastjob.settings
+    fastjob.settings._settings = None
+    fastjob.settings.get_settings(reload=True)
+    
     await create_test_database()
     try:
         pool = await get_pool()
@@ -152,22 +163,27 @@ async def test_queue_isolation():
 
 @pytest.mark.asyncio 
 async def test_schedule_in_and_schedule_at():
-    """Test convenience scheduling functions"""
+    """Test scheduling with different time specifications"""
+    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
+    import fastjob.settings
+    fastjob.settings._settings = None
+    fastjob.settings.get_settings(reload=True)
+    
     await create_test_database()
     try:
         pool = await get_pool()
         await clear_table(pool)
         
-        # Test schedule_at
+        # Test schedule at specific datetime using positional argument
         future_time = datetime.now() + timedelta(minutes=30)
-        at_job_id = await fastjob.schedule_at(
+        at_job_id = await fastjob.schedule(
             scheduled_job, 
             future_time, 
             message="scheduled at specific time"
         )
         
-        # Test schedule_in (seconds)
-        in_job_id = await fastjob.schedule_in(
+        # Test schedule in seconds using positional argument
+        in_job_id = await fastjob.schedule(
             scheduled_job,
             1800,  # 30 minutes in seconds
             message="scheduled in 30 minutes"

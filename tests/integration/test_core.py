@@ -22,6 +22,8 @@ logging.basicConfig(level=logging.INFO)
 # Set test database URL for all tests
 import os
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
+# Keep completed jobs for 3600 seconds (1 hour) for test verification
+os.environ["FASTJOB_RESULT_TTL"] = "3600"
 
 class SampleJobArgs(BaseModel):
     x: int
@@ -47,6 +49,11 @@ async def always_fail_job(job_id: str):
 
 @pytest.mark.asyncio
 async def test_enqueue_and_run_job():
+    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
+    import fastjob.settings
+    fastjob.settings._settings = None
+    settings = fastjob.settings.get_settings(reload=True)
+    
     await create_test_database()
     try:
         pool = await get_pool()
@@ -64,7 +71,7 @@ async def test_enqueue_and_run_job():
         # Check job status
         async with pool.acquire() as conn:
             job_record = await conn.fetchrow("SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id))
-            assert job_record["job_name"] == "tests.test_core.sample_job"
+            assert job_record["job_name"] == "tests.integration.test_core.sample_job"
             assert json.loads(job_record["args"]) == {"x": 1, "y": 2}
             assert job_record["max_attempts"] == 5
             assert job_record["status"] == "done"
@@ -180,6 +187,11 @@ async def test_cli_worker():
 
 @pytest.mark.asyncio
 async def test_task_discovery():
+    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
+    import fastjob.settings
+    fastjob.settings._settings = None
+    settings = fastjob.settings.get_settings(reload=True)
+    
     await create_test_database()
     try:
         pool = await get_pool()

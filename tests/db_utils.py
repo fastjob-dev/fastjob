@@ -9,12 +9,13 @@ from fastjob.db.migrations import run_migrations
 TEST_DB_NAME = "fastjob_test"
 
 async def create_test_database():
-    os.environ["FASTJOB_DATABASE_URL"] = f"postgresql://postgres@localhost/{TEST_DB_NAME}"
+    db_url = f"postgresql://postgres@localhost/{TEST_DB_NAME}"
+    os.environ["FASTJOB_DATABASE_URL"] = db_url
     subprocess.run(["dropdb", "--if-exists", TEST_DB_NAME], check=True)
     subprocess.run(["createdb", TEST_DB_NAME], check=True)
 
     # Create a temporary pool for migrations
-    temp_pool = await asyncpg.create_pool(f"postgresql://postgres@localhost/{TEST_DB_NAME}")
+    temp_pool = await asyncpg.create_pool(db_url)
     async with temp_pool.acquire() as conn:
         await run_migrations(conn)
     await temp_pool.close()
