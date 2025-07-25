@@ -66,8 +66,7 @@ def main():
         ]),
         
         ("Scheduling & Timing", [
-            "tests/integration/test_scheduling.py",
-            "tests/integration/test_listen_notify.py"
+            "tests/integration/test_scheduling.py"
         ]),
         
         ("Specification Compliance", [

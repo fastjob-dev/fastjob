@@ -86,22 +86,11 @@ async def test_start_command_structure():
     assert result.returncode == 0
 
 
-@pytest.mark.asyncio
-async def test_dashboard_command():
-    """Test dashboard command if FastAPI is available"""
-    try:
-        import fastapi
-        import uvicorn
-        
-        # Test dashboard help
-        result = run_cli_command(["dashboard", "--help"])
-        assert "dashboard" in result.stdout.lower()
-        
-        # Note: We don't start the actual dashboard server in tests
-        # as it would require more complex setup and teardown
-        
-    except ImportError:
-        pytest.skip("FastAPI not installed - dashboard command not available")
+# Dashboard test moved to fastjob-pro package since dashboard is a Pro feature
+# @pytest.mark.asyncio
+# async def test_dashboard_command():
+#     """Test dashboard command if FastAPI is available - MOVED TO FASTJOB-PRO"""
+#     pass
 
 
 @pytest.mark.asyncio
