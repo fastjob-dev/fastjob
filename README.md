@@ -163,7 +163,7 @@ async def upload_photo(user_id: int, image_data: bytes):
 
 @app.on_event("startup")
 async def startup():
-    if fastjob.run_in_dev_mode():
+    if fastjob.is_dev_mode():
         fastjob.start_embedded_worker()
 ```
 
@@ -492,7 +492,7 @@ async def upload_file(file_id: int):
 
 @app.on_event("startup")
 async def startup():
-    if fastjob.run_in_dev_mode():
+    if fastjob.is_dev_mode():
         fastjob.start_embedded_worker()
 ```
 

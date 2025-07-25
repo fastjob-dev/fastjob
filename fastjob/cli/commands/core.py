@@ -1,51 +1,76 @@
 """
-Consolidated FastJob CLI commands - simplified to 3 core commands
+Consolidated FastJob CLI commands - refactored for extensibility
 """
 
 import asyncio
 import json
 from ..colors import print_status, StatusIcon
+from ..registry import register_simple_command
 
 
-def add_core_commands(subparsers):
-    """Add the 3 core consolidated commands"""
-    add_start_command(subparsers)
-    add_setup_command(subparsers)  
-    add_status_command(subparsers)
-
-
-def add_start_command(subparsers):
-    """Add start command (consolidates worker)"""
-    start_parser = subparsers.add_parser(
-        "start", 
+def register_core_commands():
+    """Register all core CLI commands using the new registry system."""
+    
+    # Start command (worker functionality)
+    register_simple_command(
+        name="start",
         help="Start FastJob worker",
-        description="Start FastJob worker to process background jobs"
+        description="Start FastJob worker to process background jobs",
+        handler=handle_start_command,
+        arguments=[
+            {"args": ["--concurrency"], "kwargs": {"type": int, "default": 4, "help": "Number of concurrent workers (default: 4)"}},
+            {"args": ["--queues"], "kwargs": {"default": "default", "help": "Comma-separated list of queues to process (default: default)"}},
+            {"args": ["--run-once"], "kwargs": {"action": "store_true", "help": "Process jobs once and exit (useful for testing)"}}
+        ],
+        category="worker"
     )
-    start_parser.add_argument("--concurrency", type=int, default=4, help="Number of concurrent workers (default: 4)")
-    start_parser.add_argument("--queues", default="default", help="Comma-separated list of queues to process (default: default)")
-    start_parser.add_argument("--run-once", action="store_true", help="Process jobs once and exit (useful for testing)")
-    start_parser.set_defaults(func=handle_start_command)
-
-
-def add_setup_command(subparsers):
-    """Add setup command (consolidates migrate)"""
-    subparsers.add_parser(
-        "setup", 
-        help="Setup FastJob database", 
-        description="Initialize or update FastJob database schema"
-    ).set_defaults(func=handle_setup_command)
-
-
-def add_status_command(subparsers):
-    """Add status command (consolidates health, jobs, queues)"""
-    status_parser = subparsers.add_parser(
-        "status", 
+    
+    # Setup command (database management)
+    register_simple_command(
+        name="setup",
+        help="Setup FastJob database",
+        description="Initialize or update FastJob database schema",
+        handler=handle_setup_command,
+        category="database"
+    )
+    
+    # Migration status command (database management)
+    register_simple_command(
+        name="migrate-status",
+        help="Show database migration status",
+        description="Display current database migration status and pending migrations",
+        handler=handle_migrate_status_command,
+        category="database"
+    )
+    
+    # Status command (monitoring)
+    register_simple_command(
+        name="status",
         help="Show system status",
-        description="Display system health, job statistics, and queue information"
+        description="Display system health, job statistics, and queue information",
+        handler=handle_status_command,
+        arguments=[
+            {"args": ["--jobs"], "kwargs": {"action": "store_true", "help": "Show recent jobs"}},
+            {"args": ["--verbose"], "kwargs": {"action": "store_true", "help": "Show detailed information"}}
+        ],
+        category="monitoring"
     )
-    status_parser.add_argument("--jobs", action="store_true", help="Show recent jobs")
-    status_parser.add_argument("--verbose", action="store_true", help="Show detailed information")
-    status_parser.set_defaults(func=handle_status_command)
+    
+    # CLI debug command (development)
+    register_simple_command(
+        name="cli-debug",
+        help="Show CLI command registry information",
+        description="Display information about registered CLI commands for debugging",
+        handler=handle_cli_debug_command,
+        arguments=[
+            {"args": ["--plugins"], "kwargs": {"action": "store_true", "help": "Show plugin information"}}
+        ],
+        category="debug"
+    )
+
+
+
+
 
 
 async def handle_start_command(args):
@@ -72,14 +97,65 @@ async def handle_start_command(args):
 async def handle_setup_command(args):
     """Handle setup command (migration functionality)"""
     from fastjob.db.migrations import run_migrations
+    from fastjob.db.migration_runner import get_migration_status
     
     try:
         print_status("Setting up FastJob database...", "info")
-        await run_migrations()
-        print_status("Database setup completed successfully", "success")
+        
+        # Check current status first
+        status = await get_migration_status()
+        print(f"  Found {status['total_migrations']} total migrations")
+        
+        if status['pending_migrations']:
+            print(f"  Applying {len(status['pending_migrations'])} pending migrations...")
+            for migration in status['pending_migrations']:
+                print(f"    - {migration}")
+        else:
+            print("  Database schema is already up to date")
+        
+        # Run migrations
+        applied_count = await run_migrations()
+        
+        if applied_count > 0:
+            print_status(f"Applied {applied_count} migrations successfully", "success")
+        else:
+            print_status("Database setup completed (no migrations needed)", "success")
+            
         return 0
     except Exception as e:
         print_status(f"Setup failed: {e}", "error")
+        return 1
+
+
+async def handle_migrate_status_command(args):
+    """Handle migrate status command"""
+    from fastjob.db.migration_runner import get_migration_status
+    
+    try:
+        print_status("FastJob Database Migration Status", "info")
+        print("=" * 50)
+        
+        status = await get_migration_status()
+        
+        print(f"Total migrations: {status['total_migrations']}")
+        print(f"Applied migrations: {len(status['applied_migrations'])}")
+        print(f"Pending migrations: {len(status['pending_migrations'])}")
+        print(f"Status: {'Up to date' if status['is_up_to_date'] else 'Migrations pending'}")
+        
+        if status['applied_migrations']:
+            print("\nApplied migrations:")
+            for migration in status['applied_migrations']:
+                print(f"  ✅ {migration}")
+        
+        if status['pending_migrations']:
+            print("\nPending migrations:")
+            for migration in status['pending_migrations']:
+                print(f"  ⏳ {migration}")
+            print(f"\nRun 'fastjob setup' to apply pending migrations")
+        
+        return 0
+    except Exception as e:
+        print_status(f"Failed to get migration status: {e}", "error")
         return 1
 
 
@@ -174,4 +250,57 @@ async def handle_status_command(args):
         except Exception as e:
             print_status(f"Failed to get recent jobs: {e}", "error")
 
+    return 0
+
+
+async def handle_cli_debug_command(args):
+    """Handle CLI debug command - show command registry and plugin info."""
+    from ..registry import get_cli_registry
+    
+    print(f"\n{StatusIcon.rocket()} FastJob CLI Debug Information")
+    
+    # Command registry status
+    registry = get_cli_registry()
+    status = registry.get_registry_status()
+    
+    print(f"\nCommand Registry:")
+    print(f"  Total commands: {status['total_commands']}")
+    
+    if status['categories']:
+        print(f"  Categories:")
+        for category, count in status['categories'].items():
+            print(f"    {category}: {count} command{'s' if count != 1 else ''}")
+    
+    print(f"\nRegistered Commands:")
+    for category in registry.get_categories():
+        commands = registry.get_commands_by_category(category)
+        if commands:
+            print(f"  {category.upper()}:")
+            for cmd in commands:
+                aliases_str = f" (aliases: {', '.join(cmd.aliases)})" if cmd.aliases else ""
+                print(f"    - {cmd.name}: {cmd.help}{aliases_str}")
+    
+    # Plugin information if requested
+    if args.plugins:
+        try:
+            import fastjob
+            plugin_status = fastjob.get_plugin_status()
+            
+            print(f"\nPlugin Status:")
+            print(f"  Active plugins: {plugin_status['summary']['active_count']}")
+            print(f"  Failed plugins: {plugin_status['summary']['failed_count']}")
+            
+            if plugin_status['active_plugins']:
+                print(f"  Active:")
+                for name, info in plugin_status['active_plugins'].items():
+                    print(f"    - {info['name']} v{info['version']}")
+                    
+            if plugin_status['failed_plugins']:
+                print(f"  Failed:")
+                for failed in plugin_status['failed_plugins']:
+                    print(f"    - {failed['name']}: {failed['error_type']}")
+                    
+        except Exception as e:
+            print_status(f"Could not get plugin information: {e}", "warning")
+    
     return 0

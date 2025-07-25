@@ -108,7 +108,7 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     """Start FastJob embedded worker in development mode."""
-    if fastjob.run_in_dev_mode():
+    if fastjob.is_dev_mode():
         print("🚀 Starting FastJob embedded worker (dev mode)...")
         fastjob.start_embedded_worker()
     else:
@@ -118,7 +118,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop FastJob embedded worker if running."""
-    if fastjob.run_in_dev_mode():
+    if fastjob.is_dev_mode():
         print("🛑 Stopping FastJob embedded worker...")
         await fastjob.stop_embedded_worker()
 

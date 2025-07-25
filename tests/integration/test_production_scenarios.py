@@ -22,7 +22,7 @@ import asyncpg
 from fastjob import job, enqueue
 from fastjob.core.processor import run_worker, process_jobs
 from fastjob.db.connection import create_pool, DatabaseContext
-from fastjob.settings import FASTJOB_DATABASE_URL
+from fastjob.settings import get_settings
 
 
 # Test job functions
@@ -91,6 +91,7 @@ class TestProductionScenarios:
                 job_ids.append(slow_job_id)
             
             # Start worker in subprocess to test real signal handling
+            settings = get_settings()
             worker_script = f'''
 import asyncio
 import sys
@@ -99,7 +100,7 @@ sys.path.insert(0, "{os.path.dirname(os.path.dirname(__file__))}")
 from fastjob.core.processor import run_worker
 
 if __name__ == "__main__":
-    asyncio.run(run_worker(concurrency=2, database_url="{FASTJOB_DATABASE_URL}"))
+    asyncio.run(run_worker(concurrency=2, database_url="{settings.database_url}"))
 '''
             
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as script_file:

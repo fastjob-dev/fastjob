@@ -279,10 +279,17 @@ async def test_project_structure_compliance():
         "core/registry.py",    # Task decorator
         "core/queue.py",       # Queue logic
         "core/processor.py",   # Processor loop
-        "db/schema.sql",       # Postgres schema
         "db/migrations.py",    # Migrations
+        "db/migration_runner.py",  # Migration system
         "cli/main.py",         # CLI entrypoints
     ]
+    
+    # Check migration directory and initial migration exist
+    migrations_dir = os.path.join(base_path, "db/migrations")
+    assert os.path.isdir(migrations_dir), "Migrations directory missing: db/migrations"
+    
+    initial_migration = os.path.join(migrations_dir, "001_initial_schema.sql")
+    assert os.path.isfile(initial_migration), "Initial migration missing: db/migrations/001_initial_schema.sql"
     
     for file_path in required_files:
         full_path = os.path.join(base_path, file_path)

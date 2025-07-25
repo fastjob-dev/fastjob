@@ -22,6 +22,9 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
     """
     Process a single job from the queue.
     
+    This function has been refactored to execute jobs OUTSIDE of database transactions
+    to prevent long-running jobs from holding database locks and causing deadlocks.
+    
     Args:
         conn: Database connection
         queue: Queue name to process jobs from
@@ -29,7 +32,8 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
     Returns:
         bool: True if a job was processed, False if no jobs available
     """
-    # Use a transaction to ensure atomicity
+    # Step 1: Fetch and lock a job in a minimal transaction
+    job_record = None
     async with conn.transaction():
         # Lock and fetch the next job (ordered by priority then scheduled time)
         job_record = await conn.fetchrow("""
@@ -44,44 +48,65 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
         
         if not job_record:
             return False
-
+            
+        # Mark job as processing to prevent other workers from picking it up
         job_id = job_record['id']
-        job_name = job_record['job_name']
-        args_data = json.loads(job_record['args'])
-        attempts = job_record['attempts']
-        max_attempts = job_record['max_attempts']
+        await conn.execute("""
+            UPDATE fastjob_jobs
+            SET status = 'processing', 
+                updated_at = NOW()
+            WHERE id = $1
+        """, job_id)
+    
+    # Step 2: Extract job details (outside transaction)
+    job_id = job_record['id']
+    job_name = job_record['job_name']
+    args_data = json.loads(job_record['args'])
+    attempts = job_record['attempts']
+    max_attempts = job_record['max_attempts']
+    
+    # Basic logging
+    start_time = time.time()
+    logger.info(f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}")
+
+    job_meta = get_job(job_name)
+    if not job_meta:
+        await conn.execute("""
+            UPDATE fastjob_jobs
+            SET status = 'dead_letter', 
+                attempts = max_attempts,
+                last_error = $1, 
+                updated_at = NOW()
+            WHERE id = $2
+        """, f"Job {job_name} not registered.", job_id)
+        logger.error(f"Job {job_name} not registered - moved to dead letter queue")
+        return True
+
+    # Step 3: Execute the job function OUTSIDE of any transaction
+    job_success = False
+    job_error = None
+    
+    try:
+        # Validate arguments if model is specified
+        args_model = job_meta.get("args_model")
+        if args_model:
+            validated_args = args_model(**args_data).model_dump()
+        else:
+            validated_args = args_data
+
+        # Execute the job function (outside transaction)
+        await job_meta['func'](**validated_args)
+        job_success = True
         
-        # Basic logging
-        start_time = time.time()
-        logger.info(f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}")
-
-        job_meta = get_job(job_name)
-        if not job_meta:
-            await conn.execute("""
-                UPDATE fastjob_jobs
-                SET status = 'dead_letter', 
-                    attempts = max_attempts,
-                    last_error = $1, 
-                    updated_at = NOW()
-                WHERE id = $2
-            """, f"Job {job_name} not registered.", job_id)
-            logger.error(f"Job {job_name} not registered - moved to dead letter queue")
-            return True
-
-        try:
-            # Validate arguments if model is specified
-            args_model = job_meta.get("args_model")
-            if args_model:
-                validated_args = args_model(**args_data).model_dump()
-            else:
-                validated_args = args_data
-
-            # Execute the job function
-            await job_meta['func'](**validated_args)
-            
-            # Calculate duration
-            duration_ms = round((time.time() - start_time) * 1000, 2)
-            
+    except Exception as e:
+        job_error = str(e)
+        logger.exception(f"Job {job_id} execution failed")
+    
+    # Step 4: Update job status based on execution result in a separate transaction
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+    
+    async with conn.transaction():
+        if job_success:
             # Handle job result TTL setting
             from fastjob.settings import get_settings
             settings = get_settings()
@@ -102,37 +127,33 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
                     WHERE id = $1
                 """, job_id)
                 logger.info(f"Job {job_id} completed successfully in {duration_ms}ms (kept as done)")
-            return True
-            
-        except Exception as e:
-            duration_ms = round((time.time() - start_time) * 1000, 2)
-            logger.exception(f"Job {job_id} execution failed in {duration_ms}ms")
-            
+        else:
+            # Job failed - increment attempts
             new_attempts = attempts + 1
             if new_attempts >= max_attempts:
                 # Permanently failed - move to dead letter queue
                 await conn.execute("""
                     UPDATE fastjob_jobs
                     SET status = 'dead_letter', 
-                        last_error = $1, 
-                        attempts = $2, 
+                        attempts = $1,
+                        last_error = $2, 
                         updated_at = NOW()
                     WHERE id = $3
-                """, f"Max retries exceeded: {str(e)}", new_attempts, job_id)
+                """, new_attempts, f"Max retries exceeded: {job_error}", job_id)
                 logger.error(f"Job {job_id} moved to dead letter queue after {new_attempts} attempts")
             else:
-                # Retry
+                # Retry - reset to queued status
                 await conn.execute("""
                     UPDATE fastjob_jobs
                     SET status = 'queued', 
-                        last_error = $1, 
-                        attempts = $2, 
+                        attempts = $1,
+                        last_error = $2, 
                         updated_at = NOW()
                     WHERE id = $3
-                """, str(e), new_attempts, job_id)
-                logger.warning(f"Job {job_id} will be retried (attempt {new_attempts})")
-            
-            return True
+                """, new_attempts, job_error, job_id)
+                logger.warning(f"Job {job_id} will be retried (attempt {new_attempts} failed)")
+    
+    return True
 
 
 async def run_worker(concurrency: int = 4, run_once: bool = False, database_url: Optional[str] = None, queues: list[str] = None):
@@ -145,10 +166,10 @@ async def run_worker(concurrency: int = 4, run_once: bool = False, database_url:
         database_url: Database URL to connect to
         queues: List of queue names to process. If None, processes 'default' queue
     """
-    from fastjob.settings import FASTJOB_DATABASE_URL
+    from fastjob.settings import get_settings
     from fastjob.db.connection import create_pool
     
-    db_url = database_url or FASTJOB_DATABASE_URL
+    db_url = database_url or get_settings().database_url
     try:
         pool = await create_pool(db_url)
     except Exception as e:

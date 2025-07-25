@@ -68,7 +68,7 @@ class DatabaseConnectionError(FastJobError):
         
         suggestions = [
             "Verify that PostgreSQL is running and accessible",
-            "Check FASTJOB_DATABASE_URL environment variable is set correctly",
+            "Check database_url configuration is set correctly",
             "Ensure database exists and user has proper permissions",
             "Verify network connectivity to database server",
             "Check if firewall is blocking database port (default: 5432)"

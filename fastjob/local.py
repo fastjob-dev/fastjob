@@ -1,5 +1,19 @@
 """
 Embedded worker for local development - simple, fast, and reliable
+
+⚠️  WARNING: NOT FOR PRODUCTION USE ⚠️
+
+The embedded worker is designed for development and testing only.
+For production deployments, use the standalone worker:
+
+    fastjob start --concurrency 4 --queues default,high,low
+
+Production issues with embedded worker:
+- No external monitoring or health checks
+- Can die silently without restart mechanisms  
+- Missing process management and supervision
+- No metrics or observability integration
+- Limited error recovery capabilities
 """
 
 import asyncio
@@ -43,6 +57,14 @@ async def _run_embedded_worker_loop(
             queues = [row['queue'] for row in db_queues]
             if not queues:
                 queues = ["default"]  # Fallback if no jobs in any queue
+    
+    if not run_once:  # Only warn for persistent workers, not testing
+        logger.warning(
+            "⚠️  EMBEDDED WORKER PRODUCTION WARNING: "
+            "This embedded worker is NOT recommended for production use. "
+            "Use 'fastjob start' for production deployments with proper "
+            "process management, monitoring, and health checks."
+        )
     
     logger.info(f"Starting embedded worker (concurrency: {concurrency}, run_once: {run_once}, queues: {queues})")
     
@@ -98,6 +120,11 @@ def start_embedded_worker(concurrency: int = 1, run_once: bool = False, poll_int
     """
     Start the embedded worker task (synchronous version for easy use)
     
+    ⚠️  WARNING: NOT FOR PRODUCTION USE ⚠️
+    
+    This embedded worker is designed for development and testing only.
+    For production, use the standalone worker: `fastjob start`
+    
     Args:
         concurrency: Number of concurrent job processors (default: 1)
         run_once: If True, process available jobs once and exit (for testing)
@@ -117,6 +144,10 @@ def start_embedded_worker(concurrency: int = 1, run_once: bool = False, poll_int
         # Higher concurrency for busy development
         fastjob.start_embedded_worker(concurrency=4)
     """
+    # Ensure plugins are loaded when starting embedded worker
+    from fastjob import _ensure_plugins_loaded
+    _ensure_plugins_loaded()
+    
     global _task
     
     if _task is not None and not _task.done():
@@ -130,6 +161,11 @@ def start_embedded_worker(concurrency: int = 1, run_once: bool = False, poll_int
 async def start_embedded_worker_async(concurrency: int = 1, run_once: bool = False, poll_interval: float = 0.5, queues: list = None):
     """
     Start the embedded worker (async version for advanced use cases)
+    
+    ⚠️  WARNING: NOT FOR PRODUCTION USE ⚠️
+    
+    This embedded worker is designed for development and testing only.
+    For production, use the standalone worker: `fastjob start`
     
     Args:
         concurrency: Number of concurrent job processors (default: 1)
@@ -150,6 +186,10 @@ async def start_embedded_worker_async(concurrency: int = 1, run_once: bool = Fal
         # Start background worker in async app startup
         worker_task = await fastjob.start_embedded_worker_async()
     """
+    # Ensure plugins are loaded when starting embedded worker
+    from fastjob import _ensure_plugins_loaded
+    _ensure_plugins_loaded()
+    
     global _task
     
     if run_once:

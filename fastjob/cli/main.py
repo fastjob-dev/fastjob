@@ -6,22 +6,29 @@ import argparse
 import asyncio
 from .colors import print_status, StatusIcon
 
-# Import consolidated core commands
-from .commands.core import add_core_commands
+# Import extensible command system
+from .commands.core import register_core_commands
+from .registry import get_cli_registry
 
 
-def load_plugin_commands(subparsers):
-    """Load CLI commands from installed fastjob plugins using proper plugin architecture"""
+def load_plugin_commands():
+    """Load CLI commands from installed fastjob plugins using the registry system."""
     try:
+        # Explicitly load plugins first
+        import fastjob
+        fastjob.load_plugins()
+        
         from fastjob.plugins import get_plugin_manager
         plugin_manager = get_plugin_manager()
         
-        # Call plugin hook to let plugins register their own subparsers
-        plugin_manager.call_hook('register_cli_commands', subparsers)
+        # Plugins register commands in our registry using: fastjob.cli.registry.register_command()
+        plugin_manager.call_hook('register_cli_commands')
                         
     except Exception as e:
         # No plugins found or plugin system not available
-        pass
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Plugin command loading failed: {e}")
 
 
 def main():
@@ -41,11 +48,15 @@ For more information, visit: https://docs.fastjob.dev
     
     subparsers = parser.add_subparsers(dest="command", title="Available commands")
 
-    # Add core commands
-    add_core_commands(subparsers)
-
+    # Register core commands in the registry
+    register_core_commands()
+    
     # Load plugin commands (Pro, Enterprise features)
-    load_plugin_commands(subparsers)
+    load_plugin_commands()
+    
+    # Add all registered commands to the parser
+    registry = get_cli_registry()
+    registry.add_to_parser(subparsers)
 
     # Parse arguments
     args = parser.parse_args()

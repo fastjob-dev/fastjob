@@ -556,10 +556,11 @@ async def test_environment_variable_handling():
             del os.environ["FASTJOB_DATABASE_URL"]
 
         # Should handle missing FASTJOB_DATABASE_URL gracefully
-        from fastjob.settings import FASTJOB_DATABASE_URL
+        from fastjob.settings import get_settings
+        settings = get_settings()
 
         assert (
-            FASTJOB_DATABASE_URL is not None
+            settings.database_url is not None
         )  # Should have a default or raise a clear error
 
         # Test with custom environment variables
@@ -568,15 +569,13 @@ async def test_environment_variable_handling():
         os.environ["FASTJOB_LOG_LEVEL"] = "DEBUG"
         os.environ["FASTJOB_LOG_FORMAT"] = "structured"
 
-        # Re-import to pick up new environment
-        import importlib
-        import fastjob.settings
-
-        importlib.reload(fastjob.settings)
+        # Reload settings to pick up new environment
+        from fastjob.settings import get_settings
+        settings = get_settings(reload=True)
 
         # Verify settings were picked up
         assert (
-            fastjob.settings.FASTJOB_DATABASE_URL
+            settings.database_url
             == "postgresql://test@localhost/test_db"
         )
 

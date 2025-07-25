@@ -228,7 +228,7 @@ def get_settings(config_file: Optional[Path] = None, reload: bool = False) -> Fa
     Returns:
         FastJobSettings instance
     """
-    global _settings, FASTJOB_DATABASE_URL, FASTJOB_JOBS_MODULE, FASTJOB_DEV_MODE, FASTJOB_RESULT_TTL
+    global _settings
     
     if _settings is None or reload:
         try:
@@ -239,12 +239,6 @@ def get_settings(config_file: Optional[Path] = None, reload: bool = False) -> Fa
                 # Load from environment variables
                 _settings = FastJobSettings()
                 
-            # Update backward compatibility exports
-            FASTJOB_DATABASE_URL = _settings.database_url
-            FASTJOB_JOBS_MODULE = _settings.jobs_module
-            FASTJOB_DEV_MODE = _settings.dev_mode
-            FASTJOB_RESULT_TTL = _settings.result_ttl
-            
         except ValidationError as e:
             raise ValueError(f"Invalid FastJob configuration: {e}")
     
@@ -256,14 +250,8 @@ def reload_settings(config_file: Optional[Path] = None):
     return get_settings(config_file=config_file, reload=True)
 
 
-# Create settings instance and provide backward compatibility
+# Create settings instance
 settings = get_settings()
-
-# Backward compatibility exports
-FASTJOB_DATABASE_URL = settings.database_url
-FASTJOB_JOBS_MODULE = settings.jobs_module
-FASTJOB_DEV_MODE = settings.dev_mode
-FASTJOB_RESULT_TTL = settings.result_ttl
 
 
 # Development helper functions (moved from helpers.py)
@@ -299,6 +287,3 @@ def is_dev_mode() -> bool:
     return get_settings().dev_mode
 
 
-def run_in_dev_mode() -> bool:
-    """Alias for is_dev_mode() for backward compatibility."""
-    return is_dev_mode()

@@ -37,7 +37,7 @@ from fastjob.db.connection import (
     _context_pool,
     _pool
 )
-from fastjob.settings import FASTJOB_DATABASE_URL
+from fastjob.settings import get_settings
 from tests.db_utils import create_test_database, clear_table
 
 

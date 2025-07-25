@@ -27,10 +27,9 @@ class TestCompletePluginSystemIntegration:
         discover_and_load_plugins()
         
         # Step 3: Test CLI can load plugin commands
-        mock_subparsers = MagicMock()
         
         # This should not raise an exception
-        load_plugin_commands(mock_subparsers)
+        load_plugin_commands()
         
         # If any plugins are loaded, the hook should have been called
         # (We can't guarantee plugins are installed, so we just test it doesn't crash)
@@ -40,15 +39,13 @@ class TestCompletePluginSystemIntegration:
         # Mock a plugin manager with the register_cli_commands hook
         mock_plugin_manager = MagicMock()
         
-        # Mock subparsers
-        mock_subparsers = MagicMock()
         
         # Test that load_plugin_commands calls the hook
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Should have called the register_cli_commands hook
-            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands', mock_subparsers)
+            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands')
     
     def test_plugin_command_execution_workflow(self):
         """Test the complete workflow of executing a plugin command"""
@@ -78,34 +75,31 @@ class TestPluginSystemResilience:
         mock_plugin_manager = MagicMock()
         mock_plugin_manager.call_hook.return_value = []  # No plugins respond to hook
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should work without issues
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Should have tried to call the hook
-            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands', mock_subparsers)
+            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands')
     
     def test_cli_handles_plugin_manager_errors(self):
         """Test CLI handles errors from plugin manager gracefully"""
         # Mock plugin manager that raises an exception
         with patch('fastjob.plugins.get_plugin_manager', side_effect=Exception("Plugin manager error")):
-            mock_subparsers = MagicMock()
-            
+                
             # Should not propagate the exception
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
     
     def test_cli_handles_plugin_hook_errors(self):
         """Test CLI handles errors from plugin hooks gracefully"""
         mock_plugin_manager = MagicMock()
         mock_plugin_manager.call_hook.side_effect = Exception("Plugin hook error")
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should not propagate the exception
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Should have attempted to call the hook
             mock_plugin_manager.call_hook.assert_called_once()
@@ -161,10 +155,9 @@ class TestCoreAndPluginCommandCoexistence:
         
         mock_plugin_manager.call_hook.return_value = [mock_register_commands]
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Plugin should have registered its command
             mock_plugin_manager.call_hook.assert_called_once()
@@ -219,11 +212,10 @@ class TestPluginArchitectureCompliance:
         # Simulate multiple plugins, one working, one failing
         mock_plugin_manager.call_hook.return_value = [working_plugin_hook, failing_plugin_hook]
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should not crash even with failing plugin
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
 
 
 class TestCLIEntryPointIntegration:
@@ -264,8 +256,7 @@ class TestPluginCommandLifecycle:
         discover_and_load_plugins()
         
         # Step 3: CLI requests plugin commands
-        mock_subparsers = MagicMock()
-        load_plugin_commands(mock_subparsers)
+        load_plugin_commands()
         
         # Step 4: Commands should be available for execution
         # (We can't test actual execution without installed plugins,
@@ -309,13 +300,12 @@ class TestRealWorldPluginScenarios:
         mock_plugin_manager = MagicMock()
         mock_plugin_manager.call_hook.return_value = [plugin1_register, plugin2_register]
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Should have called the hook
-            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands', mock_subparsers)
+            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands')
     
     def test_plugin_upgrade_scenario(self):
         """Test scenario where plugins are upgraded/changed"""
@@ -324,10 +314,9 @@ class TestRealWorldPluginScenarios:
         mock_empty_manager = MagicMock()
         mock_empty_manager.call_hook.return_value = []
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_empty_manager):
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
         
         # Second scenario: Plugin available
         def plugin_register(subparsers):
@@ -338,7 +327,7 @@ class TestRealWorldPluginScenarios:
         mock_populated_manager.call_hook.return_value = [plugin_register]
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_populated_manager):
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Should work in both scenarios without issues
 

@@ -19,11 +19,8 @@ class TestCLIPluginDiscovery:
     
     def test_load_plugin_commands_basic(self):
         """Test that load_plugin_commands doesn't crash"""
-        # Create a mock subparsers object
-        mock_subparsers = MagicMock()
-        
         # Should not raise an exception
-        load_plugin_commands(mock_subparsers)
+        load_plugin_commands()
         
         # The function should have attempted to get the plugin manager
         # (We can't verify much more without actually installing plugins)
@@ -97,14 +94,12 @@ class TestCLIPluginIntegration:
         mock_plugin_manager = MagicMock()
         mock_plugin_manager.call_hook.return_value = [None]  # Simulate hook call
         
-        # Mock subparsers
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Verify the hook was called
-            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands', mock_subparsers)
+            mock_plugin_manager.call_hook.assert_called_once_with('register_cli_commands')
     
     def test_plugin_command_execution_mechanism(self):
         """Test that plugin commands can be executed through the CLI"""
@@ -170,11 +165,10 @@ class TestCLIPluginSystemResilience:
         mock_plugin_manager = MagicMock()
         mock_plugin_manager.call_hook.side_effect = Exception("Plugin error")
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should not raise an exception
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
     
     def test_cli_works_without_plugins(self):
         """Test CLI works when no plugins are available"""
@@ -182,11 +176,10 @@ class TestCLIPluginSystemResilience:
         mock_plugin_manager = MagicMock()
         mock_plugin_manager.call_hook.return_value = []
         
-        mock_subparsers = MagicMock()
         
         with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should work fine
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             mock_plugin_manager.call_hook.assert_called_once()
     
     def test_plugin_command_failure_handling(self):
@@ -246,13 +239,12 @@ class TestCLIEnvironmentIntegration:
             mock_manager = MagicMock()
             mock_get_manager.return_value = mock_manager
             
-            mock_subparsers = MagicMock()
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Should have tried to get the plugin manager
             mock_get_manager.assert_called_once()
             # Should have called the hook
-            mock_manager.call_hook.assert_called_once_with('register_cli_commands', mock_subparsers)
+            mock_manager.call_hook.assert_called_once_with('register_cli_commands')
 
 
 class TestCLIColorSystem:
@@ -315,10 +307,9 @@ class TestCLIArchitectureCompliance:
         """Test that CLI plugin loading is graceful and doesn't break core functionality"""
         # Even if plugin loading fails, core commands should work
         with patch('fastjob.plugins.get_plugin_manager', side_effect=Exception("Plugin system broken")):
-            mock_subparsers = MagicMock()
-            
+                
             # Should not raise an exception
-            load_plugin_commands(mock_subparsers)
+            load_plugin_commands()
             
             # Core functionality should still work
             with patch('sys.argv', ['fastjob', '--help']):

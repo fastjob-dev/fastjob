@@ -7,7 +7,8 @@ from typing import Optional, AsyncContextManager
 from contextlib import asynccontextmanager
 import contextvars
 
-from fastjob.settings import FASTJOB_DATABASE_URL
+from fastjob.settings import get_settings
+
 
 # Global pool for backward compatibility
 _pool: Optional[asyncpg.Pool] = None
@@ -31,7 +32,8 @@ async def get_pool() -> asyncpg.Pool:
     # Fall back to global pool for backward compatibility
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(FASTJOB_DATABASE_URL)
+        settings = get_settings()
+        _pool = await asyncpg.create_pool(settings.database_url)
     return _pool
 
 
@@ -51,14 +53,14 @@ async def connection_context(database_url: Optional[str] = None) -> AsyncContext
     This provides better control over connection lifecycle for testing and integration.
     
     Args:
-        database_url: Optional database URL. Uses FASTJOB_DATABASE_URL if not provided.
+        database_url: Optional database URL. Uses settings.database_url if not provided.
         
     Usage:
         async with connection_context() as pool:
             async with pool.acquire() as conn:
                 # Use connection
     """
-    db_url = database_url or FASTJOB_DATABASE_URL
+    db_url = database_url or get_settings().database_url
     pool = await asyncpg.create_pool(db_url)
     
     # Set context-local pool
@@ -80,7 +82,7 @@ class DatabaseContext:
     """
     
     def __init__(self, database_url: Optional[str] = None):
-        self.database_url = database_url or FASTJOB_DATABASE_URL
+        self.database_url = database_url or get_settings().database_url
         self.pool: Optional[asyncpg.Pool] = None
         self._token = None
     
@@ -100,5 +102,5 @@ class DatabaseContext:
 
 async def create_pool(database_url: Optional[str] = None) -> asyncpg.Pool:
     """Create a new connection pool without affecting global state"""
-    db_url = database_url or FASTJOB_DATABASE_URL
+    db_url = database_url or get_settings().database_url
     return await asyncpg.create_pool(db_url)

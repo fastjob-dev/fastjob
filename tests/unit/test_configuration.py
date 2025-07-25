@@ -258,20 +258,18 @@ class TestPydanticConfiguration:
         settings2 = reload_settings()
         assert settings2.database_url == "postgresql://after@localhost/after_db"
 
-    def test_backward_compatibility_exports(self):
-        """Test backward compatibility exports from settings module."""
+    def test_settings_access_via_get_settings(self):
+        """Test that settings are accessed via get_settings() function."""
         os.environ["FASTJOB_DATABASE_URL"] = "postgresql://export_test@localhost/export_db"
         os.environ["FASTJOB_JOBS_MODULE"] = "export.jobs"
 
         # Reload settings to pick up environment variables
         from fastjob.settings import get_settings
-        get_settings(reload=True)
+        settings = get_settings(reload=True)
 
-        from fastjob.settings import FASTJOB_DATABASE_URL, FASTJOB_JOBS_MODULE
-
-        # These should be available for backward compatibility
-        assert FASTJOB_DATABASE_URL == "postgresql://export_test@localhost/export_db"
-        assert FASTJOB_JOBS_MODULE == "export.jobs"
+        # Settings should be accessible via the settings object
+        assert settings.database_url == "postgresql://export_test@localhost/export_db"
+        assert settings.jobs_module == "export.jobs"
 
     def test_case_insensitive_configuration(self):
         """Test case-insensitive configuration handling."""

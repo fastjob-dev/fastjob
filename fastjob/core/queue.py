@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from fastjob.core.registry import get_job
 from fastjob.db.connection import get_pool
+from fastjob.utils.hashing import compute_args_hash
 
 
 async def enqueue(
@@ -41,6 +42,10 @@ async def enqueue(
     Raises:
         ValueError: If job is not registered or arguments are invalid
     """
+    # Ensure plugins are loaded automatically
+    from fastjob import _ensure_plugins_loaded
+    _ensure_plugins_loaded()
+    
     job_name = f"{job_func.__module__}.{job_func.__name__}"
     job_meta = get_job(job_name)
     if not job_meta:
@@ -68,17 +73,21 @@ async def enqueue(
 
     job_id = str(uuid.uuid4())
     pool = await get_pool()
+    
+    # Compute deterministic args hash for reliable uniqueness
+    args_json = json.dumps(kwargs)
+    args_hash = compute_args_hash(kwargs) if final_unique else None
 
     async with pool.acquire() as conn:
-        # For unique jobs, check if we already have this exact job queued
+        # For unique jobs, check if we already have this exact job queued using args_hash
         if final_unique:
             existing_job = await conn.fetchrow(
                 """
                 SELECT id FROM fastjob_jobs 
-                WHERE job_name = $1 AND args = $2 AND status = 'queued' AND unique_job = TRUE
+                WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
             """,
                 job_name,
-                json.dumps(kwargs),
+                args_hash,
             )
 
             if existing_job:
@@ -89,12 +98,13 @@ async def enqueue(
         try:
             await conn.execute(
                 """
-                INSERT INTO fastjob_jobs (id, job_name, args, max_attempts, priority, queue, unique_job, scheduled_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO fastjob_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
                 uuid.UUID(job_id),
                 job_name,
-                json.dumps(kwargs),
+                args_json,
+                args_hash,
                 job_meta["retries"] + 1,  # max_attempts = retries + 1 (original attempt + retries)
                 final_priority,
                 final_queue,
@@ -111,14 +121,14 @@ async def enqueue(
                 final_unique
                 and "duplicate key value violates unique constraint" in str(e)
             ):
-                # Let's find the job that beat us to it
+                # Let's find the job that beat us to it using args_hash
                 existing_job = await conn.fetchrow(
                     """
                     SELECT id FROM fastjob_jobs 
-                    WHERE job_name = $1 AND args = $2 AND status = 'queued' AND unique_job = TRUE
+                    WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
                 """,
                     job_name,
-                    json.dumps(kwargs),
+                    args_hash,
                 )
 
                 if existing_job:
