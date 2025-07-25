@@ -267,15 +267,25 @@ async def test_unified_schedule_function():
             assert timedelta_record["status"] == "queued"
 
             # Check that scheduling times are reasonable (within a few seconds of expected)
+            # Note: stored times are now in UTC, so we need to convert for comparison
+            import time
+            
+            # Convert local datetime to UTC for comparison
+            is_dst = time.daylight and time.localtime().tm_isdst
+            offset_seconds = time.altzone if is_dst else time.timezone
+            offset_delta = timedelta(seconds=offset_seconds)
+            future_datetime_utc = future_datetime + offset_delta
+            
             now = datetime.now()
             expected_time = now + timedelta(minutes=15)
+            expected_time_utc = expected_time + offset_delta
 
-            # For datetime scheduling, time should be exactly what we specified
-            assert abs((datetime_record["scheduled_at"] - future_datetime).total_seconds()) < 1
+            # For datetime scheduling, time should be exactly what we specified (in UTC)
+            assert abs((datetime_record["scheduled_at"] - future_datetime_utc).total_seconds()) < 1
 
-            # For seconds and timedelta scheduling, should be close to expected time
-            assert abs((seconds_record["scheduled_at"] - expected_time).total_seconds()) < 10
-            assert abs((timedelta_record["scheduled_at"] - expected_time).total_seconds()) < 10
+            # For seconds and timedelta scheduling, should be close to expected time (in UTC)
+            assert abs((seconds_record["scheduled_at"] - expected_time_utc).total_seconds()) < 10
+            assert abs((timedelta_record["scheduled_at"] - expected_time_utc).total_seconds()) < 10
 
     finally:
         await close_pool()

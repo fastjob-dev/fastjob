@@ -69,6 +69,10 @@ def main():
             "tests/integration/test_scheduling.py"
         ]),
         
+        ("LISTEN/NOTIFY Performance", [
+            "tests/integration/test_listen_notify.py"
+        ]),
+        
         ("Specification Compliance", [
             "tests/integration/test_specification_compliance.py"
         ]),

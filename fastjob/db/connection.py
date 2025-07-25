@@ -17,6 +17,11 @@ _pool: Optional[asyncpg.Pool] = None
 _context_pool: contextvars.ContextVar[Optional[asyncpg.Pool]] = contextvars.ContextVar('fastjob_pool', default=None)
 
 
+async def _init_connection(conn):
+    """Initialize connection with UTC timezone for consistent scheduled job handling"""
+    await conn.execute("SET timezone = 'UTC'")
+
+
 async def get_pool() -> asyncpg.Pool:
     """
     Get connection pool with context awareness.
@@ -33,7 +38,7 @@ async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
         settings = get_settings()
-        _pool = await asyncpg.create_pool(settings.database_url)
+        _pool = await asyncpg.create_pool(settings.database_url, init=_init_connection)
     return _pool
 
 
@@ -61,7 +66,7 @@ async def connection_context(database_url: Optional[str] = None) -> AsyncContext
                 # Use connection
     """
     db_url = database_url or get_settings().database_url
-    pool = await asyncpg.create_pool(db_url)
+    pool = await asyncpg.create_pool(db_url, init=_init_connection)
     
     # Set context-local pool
     token = _context_pool.set(pool)
@@ -88,7 +93,7 @@ class DatabaseContext:
     
     async def __aenter__(self) -> asyncpg.Pool:
         """Enter the context and create pool"""
-        self.pool = await asyncpg.create_pool(self.database_url)
+        self.pool = await asyncpg.create_pool(self.database_url, init=_init_connection)
         self._token = _context_pool.set(self.pool)
         return self.pool
     
@@ -103,4 +108,4 @@ class DatabaseContext:
 async def create_pool(database_url: Optional[str] = None) -> asyncpg.Pool:
     """Create a new connection pool without affecting global state"""
     db_url = database_url or get_settings().database_url
-    return await asyncpg.create_pool(db_url)
+    return await asyncpg.create_pool(db_url, init=_init_connection)

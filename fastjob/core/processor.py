@@ -35,6 +35,9 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
     # Step 1: Fetch and lock a job in a minimal transaction
     job_record = None
     async with conn.transaction():
+        # Ensure timezone is UTC for consistent scheduled job handling
+        await conn.execute("SET timezone = 'UTC'")
+        
         # Lock and fetch the next job (ordered by priority then scheduled time)
         job_record = await conn.fetchrow("""
             SELECT * FROM fastjob_jobs
@@ -45,7 +48,6 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
             FOR UPDATE SKIP LOCKED
             LIMIT 1
         """, queue)
-        
         if not job_record:
             return False
             

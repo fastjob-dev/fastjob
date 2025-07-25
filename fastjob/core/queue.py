@@ -64,12 +64,23 @@ async def enqueue(
     final_queue = queue if queue is not None else job_meta["queue"]
     final_unique = unique if unique is not None else job_meta["unique"]
 
-    # Normalize scheduled_at to be timezone-naive in UTC if it's timezone-aware
-    if scheduled_at and scheduled_at.tzinfo is not None:
-        scheduled_at = scheduled_at.utctimetuple()
-        from datetime import datetime
-
-        scheduled_at = datetime(*scheduled_at[:6])
+    # Normalize scheduled_at to be timezone-naive in UTC
+    if scheduled_at:
+        if scheduled_at.tzinfo is not None:
+            # Convert timezone-aware datetime to UTC
+            from datetime import timezone
+            scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+        else:
+            # For timezone-naive datetime, assume it's in local time and convert to UTC
+            # Get the local timezone offset and apply it to get UTC
+            import time
+            # Get timezone offset in seconds (accounts for DST)
+            is_dst = time.daylight and time.localtime().tm_isdst
+            offset_seconds = time.altzone if is_dst else time.timezone
+            # timezone/altzone gives seconds west of UTC (negative for east)
+            # To convert local time to UTC, we add this offset (which is negative for eastern timezones)
+            offset_delta = timedelta(seconds=offset_seconds)
+            scheduled_at = scheduled_at + offset_delta
 
     job_id = str(uuid.uuid4())
     pool = await get_pool()
@@ -79,6 +90,9 @@ async def enqueue(
     args_hash = compute_args_hash(kwargs) if final_unique else None
 
     async with pool.acquire() as conn:
+        # Ensure timezone is UTC for consistent scheduled job handling
+        await conn.execute("SET timezone = 'UTC'")
+        
         # For unique jobs, check if we already have this exact job queued using args_hash
         if final_unique:
             existing_job = await conn.fetchrow(
