@@ -276,8 +276,8 @@ FastJob is configured via environment variables:
 # Required: Database connection
 export FASTJOB_DATABASE_URL="postgresql://user:password@localhost/myapp"
 
-# Optional: Job result time-to-live in seconds (default: 0 = delete immediately)
-export FASTJOB_RESULT_TTL=0  # 0 = delete immediately, 3600 = keep 1 hour, 86400 = keep 1 day
+# Optional: Job result time-to-live in seconds (default: 300 = 5 minutes)
+export FASTJOB_RESULT_TTL=300  # 300 = 5 minutes (default), 0 = delete immediately, 3600 = keep 1 hour
 
 # Optional: Where to find your job functions
 export FASTJOB_JOBS_MODULE="myapp.jobs"
@@ -291,13 +291,14 @@ export FASTJOB_DEV_MODE=true
 
 ### Job cleanup
 
-By default, successful jobs are deleted immediately to keep your database clean. Failed jobs are always kept for debugging.
+By default, successful jobs are kept for 5 minutes to allow for debugging and monitoring, then automatically cleaned up. Failed jobs are always kept for debugging.
 
 ```bash
-# Keep successful jobs for debugging
-export FASTJOB_RESULT_TTL=3600  # 1 hour
+# Delete immediately for high-volume production
+export FASTJOB_RESULT_TTL=0  # Delete immediately
 
-# Keep for compliance/auditing
+# Keep longer for debugging/auditing
+export FASTJOB_RESULT_TTL=3600   # 1 hour
 export FASTJOB_RESULT_TTL=86400  # 1 day
 ```
 

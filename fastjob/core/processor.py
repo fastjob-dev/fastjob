@@ -206,11 +206,20 @@ async def run_worker(concurrency: int = 4, run_once: bool = False, database_url:
                                 current_time = time.time()
                                 if current_time - last_cleanup > cleanup_interval:
                                     try:
-                                        from fastjob.core.cleanup import cleanup_expired_jobs
-                                        cleaned = await cleanup_expired_jobs(job_conn)
-                                        last_cleanup = current_time
-                                        if cleaned > 0:
-                                            logger.debug(f"Cleaned up {cleaned} expired jobs")
+                                        # Clean up expired completed jobs if RESULT_TTL is set
+                                        from fastjob.settings import get_settings
+                                        settings = get_settings()
+                                        
+                                        if settings.result_ttl > 0:
+                                            cleaned = await job_conn.execute(
+                                                "DELETE FROM fastjob_jobs WHERE status = 'done' AND expires_at < NOW()"
+                                            )
+                                            cleaned_count = int(cleaned.split()[-1]) if cleaned else 0
+                                            last_cleanup = current_time
+                                            if cleaned_count > 0:
+                                                logger.debug(f"Cleaned up {cleaned_count} expired jobs")
+                                        else:
+                                            last_cleanup = current_time
                                     except Exception as cleanup_error:
                                         logger.warning(f"Cleanup failed: {cleanup_error}")
                                         last_cleanup = current_time  # Prevent continuous retries

@@ -22,8 +22,6 @@ logging.basicConfig(level=logging.INFO)
 # Set test database URL for all tests
 import os
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
-# Keep completed jobs for 3600 seconds (1 hour) for test verification
-os.environ["FASTJOB_RESULT_TTL"] = "3600"
 
 class SampleJobArgs(BaseModel):
     x: int
@@ -49,10 +47,6 @@ async def always_fail_job(job_id: str):
 
 @pytest.mark.asyncio
 async def test_enqueue_and_run_job():
-    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
-    import fastjob.settings
-    fastjob.settings._settings = None
-    settings = fastjob.settings.get_settings(reload=True)
     
     await create_test_database()
     try:
@@ -187,10 +181,6 @@ async def test_cli_worker():
 
 @pytest.mark.asyncio
 async def test_task_discovery():
-    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
-    import fastjob.settings
-    fastjob.settings._settings = None
-    settings = fastjob.settings.get_settings(reload=True)
     
     await create_test_database()
     try:

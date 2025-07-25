@@ -20,7 +20,6 @@ from tests.db_utils import create_test_database, drop_test_database, clear_table
 
 # Use test database
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
-os.environ["FASTJOB_RESULT_TTL"] = "3600"  # Keep completed jobs for test verification
 
 
 class ComplexJobArgs(BaseModel):
@@ -143,10 +142,6 @@ async def test_malformed_job_data():
 @pytest.mark.asyncio
 async def test_concurrent_job_processing():
     """Test concurrent processing of jobs by multiple workers"""
-    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
-    import fastjob.settings
-    fastjob.settings._settings = None
-    fastjob.settings.get_settings(reload=True)
     
     await create_test_database()
     try:
@@ -222,10 +217,6 @@ async def test_database_connection_failures():
 @pytest.mark.asyncio
 async def test_job_argument_validation_edge_cases():
     """Test complex argument validation scenarios"""
-    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
-    import fastjob.settings
-    fastjob.settings._settings = None
-    fastjob.settings.get_settings(reload=True)
     
     await create_test_database()
     try:
@@ -336,10 +327,6 @@ async def test_exception_handling_in_jobs():
 @pytest.mark.asyncio
 async def test_large_job_payloads():
     """Test handling of jobs with large argument payloads"""
-    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
-    import fastjob.settings
-    fastjob.settings._settings = None
-    fastjob.settings.get_settings(reload=True)
     
     await create_test_database()
     try:
@@ -386,10 +373,6 @@ async def test_large_job_payloads():
 @pytest.mark.asyncio
 async def test_worker_shutdown_handling():
     """Test graceful worker shutdown"""
-    # Clear settings cache and reload to ensure FASTJOB_RESULT_TTL is used
-    import fastjob.settings
-    fastjob.settings._settings = None
-    fastjob.settings.get_settings(reload=True)
     
     await create_test_database()
     try:

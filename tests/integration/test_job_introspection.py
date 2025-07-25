@@ -11,7 +11,12 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import fastjob
-from ..db_utils import create_test_database, drop_test_database
+from tests.db_utils import create_test_database, drop_test_database, clear_table
+from fastjob.db.connection import get_pool, close_pool
+
+# Set up test environment
+import os
+os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
 
 
 # Some test jobs to work with
@@ -40,8 +45,14 @@ class TestJobIntrospection:
         yield
         await drop_test_database()
     
+    @pytest.mark.asyncio
     async def test_get_job_status_existing_job(self):
         """Getting status for a job that exists should work as expected"""
+        
+        # Clear the table to prevent unique constraint violations
+        pool = await get_pool()
+        await clear_table(pool)
+        
         # Put a job in the queue
         job_id = await fastjob.enqueue(simple_task, message="test")
         
@@ -51,7 +62,9 @@ class TestJobIntrospection:
         # Should get back all the details we expect
         assert status is not None
         assert status["id"] == job_id
-        assert status["job_name"] == "test_job_introspection.simple_task"
+        # Job name includes the full module path
+        expected_job_name = "tests.integration.test_job_introspection.simple_task"
+        assert status["job_name"] == expected_job_name
         assert status["status"] == "queued"
         assert status["queue"] == "test"
         assert status["priority"] == 50
@@ -61,11 +74,13 @@ class TestJobIntrospection:
         assert "created_at" in status
         assert "updated_at" in status
     
+    @pytest.mark.asyncio
     async def test_get_job_status_nonexistent_job(self):
         """Test getting status of non-existent job"""
         status = await fastjob.get_job_status("00000000-0000-0000-0000-000000000000")
         assert status is None
     
+    @pytest.mark.asyncio
     async def test_cancel_queued_job(self):
         """Test cancelling a queued job"""
         # Enqueue a job
@@ -79,11 +94,13 @@ class TestJobIntrospection:
         status = await fastjob.get_job_status(job_id)
         assert status["status"] == "cancelled"
     
+    @pytest.mark.asyncio
     async def test_cancel_nonexistent_job(self):
         """Test cancelling non-existent job"""
         success = await fastjob.cancel_job("00000000-0000-0000-0000-000000000000")
         assert success is False
     
+    @pytest.mark.asyncio
     async def test_cancel_processed_job(self):
         """Test that completed jobs cannot be cancelled"""
         # Enqueue and process a job
@@ -100,6 +117,7 @@ class TestJobIntrospection:
         status = await fastjob.get_job_status(job_id)
         assert status["status"] == "done"
     
+    @pytest.mark.asyncio
     async def test_retry_failed_job(self):
         """Test retrying a failed job"""
         # Create a job that will fail
@@ -126,6 +144,7 @@ class TestJobIntrospection:
         assert status["attempts"] == 0
         assert status["last_error"] is None
     
+    @pytest.mark.asyncio
     async def test_retry_queued_job(self):
         """Test that queued jobs cannot be retried"""
         job_id = await fastjob.enqueue(simple_task, message="queued_job")
@@ -133,6 +152,7 @@ class TestJobIntrospection:
         success = await fastjob.retry_job(job_id)
         assert success is False
     
+    @pytest.mark.asyncio
     async def test_delete_job(self):
         """Test deleting a job"""
         job_id = await fastjob.enqueue(simple_task, message="delete_me")
@@ -145,6 +165,7 @@ class TestJobIntrospection:
         status = await fastjob.get_job_status(job_id)
         assert status is None
     
+    @pytest.mark.asyncio
     async def test_delete_nonexistent_job(self):
         """Test deleting non-existent job"""
         success = await fastjob.delete_job("00000000-0000-0000-0000-000000000000")
@@ -161,6 +182,7 @@ class TestJobListing:
         yield
         await drop_test_database()
     
+    @pytest.mark.asyncio
     async def test_list_all_jobs(self):
         """Test listing all jobs"""
         # Enqueue multiple jobs
@@ -175,6 +197,7 @@ class TestJobListing:
         job_ids = {job["id"] for job in jobs}
         assert {job1, job2, job3}.issubset(job_ids)
     
+    @pytest.mark.asyncio
     async def test_list_jobs_by_queue(self):
         """Test filtering jobs by queue"""
         # Enqueue jobs in different queues
@@ -191,6 +214,7 @@ class TestJobListing:
         assert len(priority_jobs) == 1
         assert priority_jobs[0]["queue"] == "priority_test"
     
+    @pytest.mark.asyncio
     async def test_list_jobs_by_status(self):
         """Test filtering jobs by status"""
         # Enqueue jobs
@@ -210,6 +234,7 @@ class TestJobListing:
         assert len(done_jobs) >= 1
         assert all(job["status"] == "done" for job in done_jobs)
     
+    @pytest.mark.asyncio
     async def test_list_jobs_with_limit(self):
         """Test job listing with limit"""
         # Enqueue multiple jobs
@@ -220,6 +245,7 @@ class TestJobListing:
         jobs = await fastjob.list_jobs(limit=3)
         assert len(jobs) == 3
     
+    @pytest.mark.asyncio
     async def test_list_jobs_with_offset(self):
         """Test job listing with offset"""
         # Enqueue jobs
@@ -252,6 +278,7 @@ class TestUniqueJobs:
         yield
         await drop_test_database()
     
+    @pytest.mark.asyncio
     async def test_unique_job_prevention(self):
         """Test that unique jobs prevent duplicates"""
         # Enqueue same unique job twice
@@ -266,6 +293,7 @@ class TestUniqueJobs:
         assert len(jobs) == 1
         assert jobs[0]["id"] == job1
     
+    @pytest.mark.asyncio
     async def test_unique_job_different_args(self):
         """Test that unique jobs with different args are allowed"""
         job1 = await fastjob.enqueue(unique_task, task_id="task1")
@@ -278,6 +306,7 @@ class TestUniqueJobs:
         jobs = await fastjob.list_jobs(queue="unique_test")
         assert len(jobs) == 2
     
+    @pytest.mark.asyncio
     async def test_unique_job_after_completion(self):
         """Test that unique jobs can be re-enqueued after completion"""
         # Enqueue and process unique job
@@ -298,6 +327,7 @@ class TestUniqueJobs:
         status = await fastjob.get_job_status(job2)
         assert status["status"] == "queued"
     
+    @pytest.mark.asyncio
     async def test_non_unique_job_allows_duplicates(self):
         """Test that non-unique jobs allow duplicates"""
         # Enqueue same non-unique job twice
@@ -311,6 +341,7 @@ class TestUniqueJobs:
         jobs = await fastjob.list_jobs(queue="test")
         assert len(jobs) == 2
     
+    @pytest.mark.asyncio
     async def test_unique_override_parameter(self):
         """Test unique parameter override in enqueue"""
         # Non-unique job made unique via parameter
@@ -336,11 +367,13 @@ class TestQueueStats:
         yield
         await drop_test_database()
     
+    @pytest.mark.asyncio
     async def test_empty_queue_stats(self):
         """Test queue stats when no jobs exist"""
         stats = await fastjob.get_queue_stats()
         assert stats == []
     
+    @pytest.mark.asyncio
     async def test_queue_stats_with_jobs(self):
         """Test queue stats with various job states"""
         # Enqueue jobs in different queues
@@ -372,6 +405,7 @@ class TestQueueStats:
         assert priority_queue is not None
         assert priority_queue["total_jobs"] >= 1
     
+    @pytest.mark.asyncio
     async def test_queue_stats_structure(self):
         """Test queue stats data structure"""
         # Enqueue a job

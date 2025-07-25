@@ -372,7 +372,6 @@ async def test_fastjob_integration_with_contexts():
     # Set up environment variables for testing
     import os
     os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
-    os.environ["FASTJOB_RESULT_TTL"] = "3600"  # Keep completed jobs for verification
     
     # Clear settings cache and reload
     import fastjob.settings

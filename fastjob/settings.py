@@ -150,9 +150,9 @@ class FastJobSettings(BaseSettings):
     
     # Job Result Retention (TTL)
     result_ttl: int = Field(
-        default=0,
+        default=300,
         ge=0,
-        description="Time to live for completed jobs in seconds (0=delete immediately, >0=keep for N seconds)"
+        description="Time to live for completed jobs in seconds (0=delete immediately, default=300 for 5 minutes)"
     )
     
     # Development/Testing

@@ -31,6 +31,12 @@ async def _run_embedded_worker_loop(
     global _shutdown_event
     _shutdown_event = asyncio.Event()
     
+    # Get a fresh pool for this event loop
+    try:
+        from fastjob.db.connection import close_pool
+        await close_pool()  # Close any existing pool from different event loop
+    except Exception:
+        pass  # Ignore errors from closing pools from different event loops
     pool = await get_pool()
     logger.info(f"Starting embedded worker (concurrency: {concurrency}, run_once: {run_once})")
     
@@ -149,7 +155,7 @@ async def stop_embedded_worker():
         
     if _task:
         try:
-            await asyncio.wait_for(_task, timeout=10.0)
+            await asyncio.wait_for(_task, timeout=5.0)  # Reduced timeout
         except asyncio.TimeoutError:
             logger.warning("Embedded worker didn't stop gracefully, cancelling...")
             _task.cancel()
@@ -157,6 +163,14 @@ async def stop_embedded_worker():
                 await _task
             except asyncio.CancelledError:
                 pass
+        except Exception as e:
+            logger.warning(f"Error stopping embedded worker: {e}")
+            if _task and not _task.done():
+                _task.cancel()
+                try:
+                    await _task
+                except asyncio.CancelledError:
+                    pass
         _task = None
         
     _shutdown_event = None
