@@ -200,6 +200,23 @@ async def cleanup_old_files():
     pass
 ```
 
+**Unique jobs:** Prevent duplicate jobs from being queued
+
+```python
+@fastjob.job(unique=True)
+async def send_welcome_email(user_email: str):
+    # Only one welcome email per user_email can be queued at a time
+    pass
+
+# These will return the same job ID (second one won't create a new job)
+job1 = await fastjob.enqueue(send_welcome_email, user_email="alice@example.com")
+job2 = await fastjob.enqueue(send_welcome_email, user_email="alice@example.com")
+assert job1 == job2
+
+# Override uniqueness per enqueue
+await fastjob.enqueue(regular_job, unique=True, data="prevent_duplicates")
+```
+
 **Job scheduling:** Run jobs later
 
 ```python

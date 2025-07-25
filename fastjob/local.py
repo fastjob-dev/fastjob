@@ -18,7 +18,8 @@ _shutdown_event: Optional[asyncio.Event] = None
 async def _run_embedded_worker_loop(
     concurrency: int = 1, 
     run_once: bool = False,
-    poll_interval: float = 0.5
+    poll_interval: float = 0.5,
+    queues: list = None
 ):
     """
     Run the embedded worker loop
@@ -27,26 +28,41 @@ async def _run_embedded_worker_loop(
         concurrency: Number of concurrent job processors (default: 1)
         run_once: If True, process available jobs once and exit (for testing)
         poll_interval: How often to check for new jobs in seconds (default: 0.5)
+        queues: List of queues to process (default: None = all queues)
     """
     global _shutdown_event
     _shutdown_event = asyncio.Event()
     
     # Get a pool for this event loop
     pool = await get_pool()
-    logger.info(f"Starting embedded worker (concurrency: {concurrency}, run_once: {run_once})")
+    
+    # If no queues specified, discover all queues from database
+    if queues is None:
+        async with pool.acquire() as conn:
+            db_queues = await conn.fetch("SELECT DISTINCT queue FROM fastjob_jobs WHERE status = 'queued'")
+            queues = [row['queue'] for row in db_queues]
+            if not queues:
+                queues = ["default"]  # Fallback if no jobs in any queue
+    
+    logger.info(f"Starting embedded worker (concurrency: {concurrency}, run_once: {run_once}, queues: {queues})")
     
     async def worker_task():
         """Individual worker task"""
         while not _shutdown_event.is_set():
             try:
+                processed_any = False
                 async with pool.acquire() as conn:
-                    processed = await process_jobs(conn)
+                    # Process all specified queues
+                    for queue in queues:
+                        processed = await process_jobs(conn, queue=queue)
+                        if processed:
+                            processed_any = True
                 
-                if run_once and not processed:
+                if run_once and not processed_any:
                     # In run_once mode, exit if no jobs were processed
                     break
                     
-                if not processed:
+                if not processed_any:
                     # No jobs processed, wait before checking again
                     try:
                         await asyncio.wait_for(_shutdown_event.wait(), timeout=poll_interval)
@@ -78,7 +94,7 @@ async def _run_embedded_worker_loop(
         logger.info("Embedded worker stopped")
 
 
-def start_embedded_worker(concurrency: int = 1, run_once: bool = False, poll_interval: float = 0.5):
+def start_embedded_worker(concurrency: int = 1, run_once: bool = False, poll_interval: float = 0.5, queues: list = None):
     """
     Start the embedded worker task (synchronous version for easy use)
     
@@ -86,10 +102,14 @@ def start_embedded_worker(concurrency: int = 1, run_once: bool = False, poll_int
         concurrency: Number of concurrent job processors (default: 1)
         run_once: If True, process available jobs once and exit (for testing)
         poll_interval: How often to check for new jobs in seconds (default: 0.5)
+        queues: List of queues to process (default: None = all queues)
     
     Examples:
-        # Basic usage in web app startup
+        # Basic usage in web app startup - processes all queues
         fastjob.start_embedded_worker()
+        
+        # Process only specific queues
+        fastjob.start_embedded_worker(queues=["urgent", "critical"])
         
         # For testing - process once and exit
         fastjob.start_embedded_worker(run_once=True)
@@ -103,11 +123,11 @@ def start_embedded_worker(concurrency: int = 1, run_once: bool = False, poll_int
         logger.warning("Embedded worker is already running")
         return
         
-    _task = asyncio.create_task(_run_embedded_worker_loop(concurrency, run_once, poll_interval))
+    _task = asyncio.create_task(_run_embedded_worker_loop(concurrency, run_once, poll_interval, queues))
     logger.info("Embedded worker task created")
 
 
-async def start_embedded_worker_async(concurrency: int = 1, run_once: bool = False, poll_interval: float = 0.5):
+async def start_embedded_worker_async(concurrency: int = 1, run_once: bool = False, poll_interval: float = 0.5, queues: list = None):
     """
     Start the embedded worker (async version for advanced use cases)
     
@@ -115,13 +135,17 @@ async def start_embedded_worker_async(concurrency: int = 1, run_once: bool = Fal
         concurrency: Number of concurrent job processors (default: 1)
         run_once: If True, process available jobs once and exit (for testing)
         poll_interval: How often to check for new jobs in seconds (default: 0.5)
+        queues: List of queues to process (default: None = all queues)
         
     Returns:
         The worker task, or runs immediately if run_once=True
     
     Examples:
-        # In async tests
+        # In async tests - processes all queues
         await fastjob.start_embedded_worker_async(run_once=True)
+        
+        # Process specific queues only
+        await fastjob.start_embedded_worker_async(run_once=True, queues=["urgent", "default"])
         
         # Start background worker in async app startup
         worker_task = await fastjob.start_embedded_worker_async()
@@ -130,7 +154,7 @@ async def start_embedded_worker_async(concurrency: int = 1, run_once: bool = Fal
     
     if run_once:
         # For run_once, execute immediately and return
-        await _run_embedded_worker_loop(concurrency, run_once, poll_interval)
+        await _run_embedded_worker_loop(concurrency, run_once, poll_interval, queues)
         return None
     
     # For continuous operation, start background task
@@ -138,7 +162,7 @@ async def start_embedded_worker_async(concurrency: int = 1, run_once: bool = Fal
         logger.warning("Embedded worker is already running")
         return _task
         
-    _task = asyncio.create_task(_run_embedded_worker_loop(concurrency, run_once, poll_interval))
+    _task = asyncio.create_task(_run_embedded_worker_loop(concurrency, run_once, poll_interval, queues))
     logger.info("Embedded worker task created")
     return _task
 

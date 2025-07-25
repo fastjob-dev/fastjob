@@ -75,7 +75,7 @@ async def enqueue(
             existing_job = await conn.fetchrow(
                 """
                 SELECT id FROM fastjob_jobs 
-                WHERE job_name = $1 AND args = $2 AND status = 'queued'
+                WHERE job_name = $1 AND args = $2 AND status = 'queued' AND unique_job = TRUE
             """,
                 job_name,
                 json.dumps(kwargs),
@@ -89,8 +89,8 @@ async def enqueue(
         try:
             await conn.execute(
                 """
-                INSERT INTO fastjob_jobs (id, job_name, args, max_attempts, priority, queue, scheduled_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO fastjob_jobs (id, job_name, args, max_attempts, priority, queue, unique_job, scheduled_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
                 uuid.UUID(job_id),
                 job_name,
@@ -98,6 +98,7 @@ async def enqueue(
                 job_meta["retries"] + 1,  # max_attempts = retries + 1 (original attempt + retries)
                 final_priority,
                 final_queue,
+                final_unique,
                 scheduled_at,
             )
 
@@ -114,7 +115,7 @@ async def enqueue(
                 existing_job = await conn.fetchrow(
                     """
                     SELECT id FROM fastjob_jobs 
-                    WHERE job_name = $1 AND args = $2 AND status = 'queued'
+                    WHERE job_name = $1 AND args = $2 AND status = 'queued' AND unique_job = TRUE
                 """,
                     job_name,
                     json.dumps(kwargs),

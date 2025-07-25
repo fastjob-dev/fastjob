@@ -14,6 +14,17 @@ import fastjob
 from tests.db_utils import create_test_database, drop_test_database, clear_table
 from fastjob.db.connection import get_pool, close_pool
 
+
+async def process_test_jobs():
+    """Helper to process jobs from all test queues"""
+    from fastjob.core.processor import process_jobs
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Process all relevant queues used in tests
+        await process_jobs(conn, queue="test")
+        await process_jobs(conn, queue="unique_test") 
+        await process_jobs(conn, queue="priority_test")
+
 # Set up test environment
 import os
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
@@ -21,17 +32,17 @@ os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_te
 
 # Some test jobs to work with
 @fastjob.job(retries=2, priority=50, queue="test")
-def simple_task(message: str):
+async def simple_task(message: str):
     return f"Processed: {message}"
 
 
 @fastjob.job(retries=1, priority=10, queue="unique_test", unique=True)
-def unique_task(task_id: str):
+async def unique_task(task_id: str):
     return f"Unique task: {task_id}"
 
 
 @fastjob.job(retries=3, priority=1, queue="priority_test")
-def priority_task(data: str):
+async def priority_task(data: str):
     return f"Priority task: {data}"
 
 
@@ -41,8 +52,12 @@ class TestJobIntrospection:
     @pytest.fixture(autouse=True)
     async def setup_database(self):
         """Set up test database"""
+        await close_pool()  # Close any existing pool
         await create_test_database()
+        pool = await get_pool()
+        await clear_table(pool)  # Clear table before each test
         yield
+        await close_pool()  # Ensure clean shutdown
         await drop_test_database()
     
     @pytest.mark.asyncio
@@ -69,7 +84,7 @@ class TestJobIntrospection:
         assert status["queue"] == "test"
         assert status["priority"] == 50
         assert status["attempts"] == 0
-        assert status["max_attempts"] == 2
+        assert status["max_attempts"] == 3  # retries=2 -> max_attempts=3
         assert status["args"] == {"message": "test"}
         assert "created_at" in status
         assert "updated_at" in status
@@ -106,12 +121,11 @@ class TestJobIntrospection:
         # Enqueue and process a job
         job_id = await fastjob.enqueue(simple_task, message="process_me")
         
-        # Process the job by running worker once
-        await fastjob.start_embedded_worker(run_once=True)
+        await process_test_jobs()
         
         # Try to cancel the completed job
         success = await fastjob.cancel_job(job_id)
-        assert success is False
+        assert success is False, "Should not be able to cancel completed job"
         
         # Verify job is still done
         status = await fastjob.get_job_status(job_id)
@@ -122,13 +136,14 @@ class TestJobIntrospection:
         """Test retrying a failed job"""
         # Create a job that will fail
         @fastjob.job(retries=1, queue="test")
-        def failing_task():
+        async def failing_task():
             raise Exception("Intentional failure")
         
         job_id = await fastjob.enqueue(failing_task)
         
-        # Process to make it fail
-        await fastjob.start_embedded_worker(run_once=True)
+        # Process to make it fail - need to process twice since retries=1 means max_attempts=2
+        await process_test_jobs()  # First attempt (fails, retries)
+        await process_test_jobs()  # Second attempt (fails, goes to dead_letter)
         
         # Verify it failed
         status = await fastjob.get_job_status(job_id)
@@ -178,8 +193,12 @@ class TestJobListing:
     @pytest.fixture(autouse=True)
     async def setup_database(self):
         """Set up test database"""
+        await close_pool()  # Close any existing pool
         await create_test_database()
+        pool = await get_pool()
+        await clear_table(pool)  # Clear table before each test
         yield
+        await close_pool()  # Ensure clean shutdown
         await drop_test_database()
     
     @pytest.mark.asyncio
@@ -222,7 +241,7 @@ class TestJobListing:
         job2 = await fastjob.enqueue(simple_task, message="process_job")
         
         # Process one job
-        await fastjob.start_embedded_worker(run_once=True)
+        await process_test_jobs()
         
         # List queued jobs
         queued_jobs = await fastjob.list_jobs(status="queued")
@@ -274,8 +293,12 @@ class TestUniqueJobs:
     @pytest.fixture(autouse=True)
     async def setup_database(self):
         """Set up test database"""
+        await close_pool()  # Close any existing pool
         await create_test_database()
+        pool = await get_pool()
+        await clear_table(pool)  # Clear table before each test
         yield
+        await close_pool()  # Ensure clean shutdown
         await drop_test_database()
     
     @pytest.mark.asyncio
@@ -311,7 +334,7 @@ class TestUniqueJobs:
         """Test that unique jobs can be re-enqueued after completion"""
         # Enqueue and process unique job
         job1 = await fastjob.enqueue(unique_task, task_id="completed_task")
-        await fastjob.start_embedded_worker(run_once=True)
+        await process_test_jobs()
         
         # Verify job is done
         status = await fastjob.get_job_status(job1)
@@ -330,6 +353,10 @@ class TestUniqueJobs:
     @pytest.mark.asyncio
     async def test_non_unique_job_allows_duplicates(self):
         """Test that non-unique jobs allow duplicates"""
+        # Clear the table to prevent conflicts with previous tests
+        pool = await get_pool()
+        await clear_table(pool)
+        
         # Enqueue same non-unique job twice
         job1 = await fastjob.enqueue(simple_task, message="same_message")
         job2 = await fastjob.enqueue(simple_task, message="same_message")
@@ -363,8 +390,12 @@ class TestQueueStats:
     @pytest.fixture(autouse=True)
     async def setup_database(self):
         """Set up test database"""
+        await close_pool()  # Close any existing pool
         await create_test_database()
+        pool = await get_pool()
+        await clear_table(pool)  # Clear table before each test
         yield
+        await close_pool()  # Ensure clean shutdown
         await drop_test_database()
     
     @pytest.mark.asyncio
@@ -386,7 +417,7 @@ class TestQueueStats:
         await fastjob.cancel_job(job_to_cancel)
         
         # Process some jobs
-        await fastjob.start_embedded_worker(run_once=True)
+        await process_test_jobs()
         
         # Get queue stats
         stats = await fastjob.get_queue_stats()
@@ -422,8 +453,15 @@ class TestQueueStats:
         
         for field in required_fields:
             assert field in queue_stat
+        
+        # Queue name should be a string
+        assert isinstance(queue_stat["queue"], str)
+        assert queue_stat["queue"] == "test"
+        
+        # Count fields should be integers
+        count_fields = ["total_jobs", "queued", "done", "failed", "dead_letter", "cancelled"]
+        for field in count_fields:
             assert isinstance(queue_stat[field], int)
         
-        assert queue_stat["queue"] == "test"
         assert queue_stat["total_jobs"] == 1
         assert queue_stat["queued"] == 1
