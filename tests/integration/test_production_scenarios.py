@@ -27,7 +27,7 @@ from fastjob.settings import FASTJOB_DATABASE_URL
 
 # Test job functions
 @job(unique=False)  # Ensure multiple instances can be enqueued
-async def test_job_counter(counter_file: str, job_index: int = 0):
+async def job_counter(counter_file: str, job_index: int = 0):
     """Test job that writes to a file to track execution"""
     import os
     from pathlib import Path
@@ -83,7 +83,7 @@ class TestProductionScenarios:
                 
                 # Fast jobs that should complete
                 for i in range(5):
-                    job_id = await enqueue(test_job_counter, counter_file=counter_file, job_index=i)
+                    job_id = await enqueue(job_counter, counter_file=counter_file, job_index=i)
                     job_ids.append(job_id)
                 
                 # Slow job that will be interrupted
@@ -150,7 +150,7 @@ if __name__ == "__main__":
             async with DatabaseContext() as pool:
                 job_ids_before = []
                 for i in range(3):
-                    job_id = await enqueue(test_job_counter, counter_file=success_file, job_index=i)
+                    job_id = await enqueue(job_counter, counter_file=success_file, job_index=i)
                     job_ids_before.append(job_id)
             
             # Start processing jobs normally
@@ -172,7 +172,7 @@ if __name__ == "__main__":
                 # Add more jobs after "reconnection"
                 job_ids_after = []
                 for i in range(2):
-                    job_id = await enqueue(test_job_counter, counter_file=success_file, job_index=i+10)
+                    job_id = await enqueue(job_counter, counter_file=success_file, job_index=i+10)
                     job_ids_after.append(job_id)
                 
                 # Process jobs after reconnection
@@ -201,9 +201,13 @@ if __name__ == "__main__":
             
             # Create many jobs to increase chance of race conditions
             async with DatabaseContext() as pool:
+                # Clear existing jobs to ensure clean test
+                async with pool.acquire() as conn:
+                    await conn.execute("DELETE FROM fastjob_jobs")
+                
                 job_ids = []
                 for i in range(20):
-                    job_id = await enqueue(test_job_counter, counter_file=execution_log, job_index=i)
+                    job_id = await enqueue(job_counter, counter_file=execution_log, job_index=i)
                     job_ids.append(job_id)
             
             # Simulate multiple workers processing concurrently
@@ -264,6 +268,9 @@ if __name__ == "__main__":
             success_file = os.path.join(temp_dir, "success_log.txt")
             
             async with DatabaseContext() as pool:
+                # Clear existing jobs to ensure clean test
+                async with pool.acquire() as conn:
+                    await conn.execute("DELETE FROM fastjob_jobs")
                 # Mix of failing and successful jobs
                 job_ids = []
                 
@@ -274,7 +281,7 @@ if __name__ == "__main__":
                 
                 # Successful jobs
                 for i in range(5):
-                    job_id = await enqueue(test_job_counter, counter_file=success_file, job_index=i+100)
+                    job_id = await enqueue(job_counter, counter_file=success_file, job_index=i+100)
                     job_ids.append(job_id)
                 
                 # Process all jobs
@@ -300,18 +307,20 @@ if __name__ == "__main__":
                 
                 assert successful_executions == 5, f"Expected 5 successful executions, got {successful_executions}"
                 
-                # Verify failing jobs eventually moved to failed/dead_letter status
-                failed_jobs = await conn.fetch("""
-                    SELECT id, status, attempts FROM fastjob_jobs 
-                    WHERE job_name LIKE '%failing_job%' 
-                    ORDER BY created_at
-                """)
-                
-                assert len(failed_jobs) == 3, f"Expected 3 failing jobs, got {len(failed_jobs)}"
-                
-                for job_record in failed_jobs:
-                    assert job_record['status'] in ['failed', 'dead_letter'], f"Job status: {job_record['status']}"
-                    assert job_record['attempts'] > 1, f"Job should have been retried, attempts: {job_record['attempts']}"
+                # Use a fresh connection for final verification
+                async with pool.acquire() as verify_conn:
+                    # Verify failing jobs eventually moved to failed/dead_letter status
+                    failed_jobs = await verify_conn.fetch("""
+                        SELECT id, status, attempts FROM fastjob_jobs 
+                        WHERE job_name LIKE '%failing_job%' 
+                        ORDER BY created_at
+                    """)
+                    
+                    assert len(failed_jobs) == 3, f"Expected 3 failing jobs, got {len(failed_jobs)}"
+                    
+                    for job_record in failed_jobs:
+                        assert job_record['status'] in ['failed', 'dead_letter'], f"Job status: {job_record['status']}"
+                        assert job_record['attempts'] > 1, f"Job should have been retried, attempts: {job_record['attempts']}"
 
     @pytest.mark.asyncio
     async def test_scheduled_job_timing_accuracy(self):
@@ -327,6 +336,11 @@ if __name__ == "__main__":
                 with open(log_file, 'a') as f:
                     f.write(f"{expected_time},{actual_time.isoformat()}\n")
                 return f"executed_at_{actual_time}"
+            
+            # Clear existing jobs to ensure clean test
+            async with DatabaseContext() as pool:
+                async with pool.acquire() as conn:
+                    await conn.execute("DELETE FROM fastjob_jobs")
             
             # Schedule jobs at different times
             now = datetime.now()
@@ -384,11 +398,15 @@ if __name__ == "__main__":
             # Create a large number of jobs
             job_count = 100
             async with DatabaseContext() as pool:
+                # Clear existing jobs to ensure clean test
+                async with pool.acquire() as conn:
+                    await conn.execute("DELETE FROM fastjob_jobs")
+                
                 job_ids = []
                 start_enqueue = time.time()
                 
                 for i in range(job_count):
-                    job_id = await enqueue(test_job_counter, counter_file=throughput_file, job_index=i)
+                    job_id = await enqueue(job_counter, counter_file=throughput_file, job_index=i)
                     job_ids.append(job_id)
                 
                 enqueue_time = time.time() - start_enqueue

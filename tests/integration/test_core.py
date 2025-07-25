@@ -67,7 +67,7 @@ async def test_enqueue_and_run_job():
             job_record = await conn.fetchrow("SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id))
             assert job_record["job_name"] == "tests.integration.test_core.sample_job"
             assert json.loads(job_record["args"]) == {"x": 1, "y": 2}
-            assert job_record["max_attempts"] == 5
+            assert job_record["max_attempts"] == 6  # retries=5 -> max_attempts=6
             assert job_record["status"] == "done"
     finally:
         await close_pool()
@@ -130,14 +130,14 @@ async def test_retry_mechanism():
         actual_job_id_2 = await enqueue(always_fail_job, job_id=job_id_2)
         
         async with pool.acquire() as conn:
-            # Process 3 times (should fail permanently after 3rd attempt)
-            for i in range(3):
+            # Process 4 times (should fail permanently after 4th attempt, since retries=3 means max_attempts=4)
+            for i in range(4):
                 processed = await process_jobs(conn)
                 assert processed is True
             
             job_record = await conn.fetchrow("SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(actual_job_id_2))
             assert job_record["status"] == "dead_letter"
-            assert job_record["attempts"] == 3
+            assert job_record["attempts"] == 4
             assert "Always fails" in job_record["last_error"]
     finally:
         await close_pool()

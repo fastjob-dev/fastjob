@@ -44,7 +44,7 @@ class TestCompletePluginSystemIntegration:
         mock_subparsers = MagicMock()
         
         # Test that load_plugin_commands calls the hook
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             load_plugin_commands(mock_subparsers)
             
             # Should have called the register_cli_commands hook
@@ -55,20 +55,19 @@ class TestCompletePluginSystemIntegration:
         # Mock args with a plugin function
         mock_args = MagicMock()
         mock_args.command = 'test-plugin-command'
-        mock_args.plugin_func = MagicMock(return_value=0)
+        mock_args.func = MagicMock(return_value=0)
         
         # Mock the discovery functions
-        with patch('fastjob.cli.main.discover_jobs'):
+        with patch('fastjob.core.discovery.discover_jobs'):
             with patch('sys.argv', ['fastjob', 'test-plugin-command']):
                 with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
-                    with pytest.raises(SystemExit) as exc_info:
-                        main()
+                    result = main()
                     
                     # Should have called the plugin function
-                    mock_args.plugin_func.assert_called_once_with(mock_args)
+                    mock_args.func.assert_called_once_with(mock_args)
                     
-                    # Should exit with success
-                    assert exc_info.value.code == 0
+                    # Should return success
+                    assert result == 0
 
 
 class TestPluginSystemResilience:
@@ -81,7 +80,7 @@ class TestPluginSystemResilience:
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should work without issues
             load_plugin_commands(mock_subparsers)
             
@@ -91,7 +90,7 @@ class TestPluginSystemResilience:
     def test_cli_handles_plugin_manager_errors(self):
         """Test CLI handles errors from plugin manager gracefully"""
         # Mock plugin manager that raises an exception
-        with patch('fastjob.cli.main.get_plugin_manager', side_effect=Exception("Plugin manager error")):
+        with patch('fastjob.plugins.get_plugin_manager', side_effect=Exception("Plugin manager error")):
             mock_subparsers = MagicMock()
             
             # Should not propagate the exception
@@ -104,7 +103,7 @@ class TestPluginSystemResilience:
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should not propagate the exception
             load_plugin_commands(mock_subparsers)
             
@@ -115,16 +114,15 @@ class TestPluginSystemResilience:
         """Test CLI handles plugin command execution errors"""
         mock_args = MagicMock()
         mock_args.command = 'failing-plugin-command'
-        mock_args.plugin_func = MagicMock(side_effect=Exception("Plugin command failed"))
+        mock_args.func = MagicMock(side_effect=Exception("Plugin command failed"))
         
-        with patch('fastjob.cli.main.discover_jobs'):
+        with patch('fastjob.core.discovery.discover_jobs'):
             with patch('sys.argv', ['fastjob', 'failing-plugin-command']):
                 with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
-                    with pytest.raises(SystemExit) as exc_info:
-                        main()
+                    result = main()
                     
-                    # Should exit with error code due to plugin failure
-                    assert exc_info.value.code == 1
+                    # Should return error code due to plugin failure
+                    assert result == 1
 
 
 class TestCoreAndPluginCommandCoexistence:
@@ -141,9 +139,9 @@ class TestCoreAndPluginCommandCoexistence:
         
         for plugin_state in plugin_states:
             if isinstance(plugin_state(), Exception):
-                patch_target = patch('fastjob.cli.main.get_plugin_manager', side_effect=plugin_state())
+                patch_target = patch('fastjob.plugins.get_plugin_manager', side_effect=plugin_state())
             else:
-                patch_target = patch('fastjob.cli.main.get_plugin_manager', return_value=plugin_state())
+                patch_target = patch('fastjob.plugins.get_plugin_manager', return_value=plugin_state())
             
             with patch_target:
                 # Core help should always work
@@ -159,13 +157,13 @@ class TestCoreAndPluginCommandCoexistence:
         
         def mock_register_commands(subparsers):
             parser = subparsers.add_parser('mock-plugin-command')
-            parser.set_defaults(plugin_func=lambda args: 0)
+            parser.set_defaults(func=lambda args: 0)
         
         mock_plugin_manager.call_hook.return_value = [mock_register_commands]
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             load_plugin_commands(mock_subparsers)
             
             # Plugin should have registered its command
@@ -184,9 +182,9 @@ class TestPluginArchitectureCompliance:
     def test_plugin_system_uses_entry_points(self):
         """Test that plugin system uses Python entry points for discovery"""
         # The plugin manager should use entry points for discovery
-        from fastjob.plugins import FastJobPluginManager
+        from fastjob.plugins import PluginManager
         
-        manager = FastJobPluginManager()
+        manager = PluginManager()
         
         # Test that discover_plugins method exists and uses entry points
         assert hasattr(manager, 'discover_plugins')
@@ -212,7 +210,7 @@ class TestPluginArchitectureCompliance:
         
         def working_plugin_hook(subparsers):
             parser = subparsers.add_parser('working-command')
-            parser.set_defaults(plugin_func=lambda args: 0)
+            parser.set_defaults(func=lambda args: 0)
         
         def failing_plugin_hook(subparsers):
             raise Exception("Plugin registration failed")
@@ -223,7 +221,7 @@ class TestPluginArchitectureCompliance:
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             # Should not crash even with failing plugin
             load_plugin_commands(mock_subparsers)
 
@@ -279,20 +277,19 @@ class TestPluginCommandLifecycle:
         mock_plugin_func = MagicMock(return_value=0)
         mock_args = MagicMock()
         mock_args.command = 'test-command'
-        mock_args.plugin_func = mock_plugin_func
+        mock_args.func = mock_plugin_func
         
         # Test execution through main()
-        with patch('fastjob.cli.main.discover_jobs'):
+        with patch('fastjob.core.discovery.discover_jobs'):
             with patch('sys.argv', ['fastjob', 'test-command']):
                 with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
-                    with pytest.raises(SystemExit) as exc_info:
-                        main()
+                    result = main()
                     
                     # Plugin function should be called
                     mock_plugin_func.assert_called_once_with(mock_args)
                     
-                    # Should exit successfully
-                    assert exc_info.value.code == 0
+                    # Should return successfully
+                    assert result == 0
 
 
 class TestRealWorldPluginScenarios:
@@ -303,18 +300,18 @@ class TestRealWorldPluginScenarios:
         # Simulate multiple plugins registering different commands
         def plugin1_register(subparsers):
             parser = subparsers.add_parser('plugin1-cmd')
-            parser.set_defaults(plugin_func=lambda args: 0)
+            parser.set_defaults(func=lambda args: 0)
         
         def plugin2_register(subparsers):
             parser = subparsers.add_parser('plugin2-cmd')
-            parser.set_defaults(plugin_func=lambda args: 0)
+            parser.set_defaults(func=lambda args: 0)
         
         mock_plugin_manager = MagicMock()
         mock_plugin_manager.call_hook.return_value = [plugin1_register, plugin2_register]
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_plugin_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_plugin_manager):
             load_plugin_commands(mock_subparsers)
             
             # Should have called the hook
@@ -329,18 +326,18 @@ class TestRealWorldPluginScenarios:
         
         mock_subparsers = MagicMock()
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_empty_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_empty_manager):
             load_plugin_commands(mock_subparsers)
         
         # Second scenario: Plugin available
         def plugin_register(subparsers):
             parser = subparsers.add_parser('new-plugin-cmd')
-            parser.set_defaults(plugin_func=lambda args: 0)
+            parser.set_defaults(func=lambda args: 0)
         
         mock_populated_manager = MagicMock()
         mock_populated_manager.call_hook.return_value = [plugin_register]
         
-        with patch('fastjob.cli.main.get_plugin_manager', return_value=mock_populated_manager):
+        with patch('fastjob.plugins.get_plugin_manager', return_value=mock_populated_manager):
             load_plugin_commands(mock_subparsers)
             
             # Should work in both scenarios without issues

@@ -95,7 +95,7 @@ async def enqueue(
                 uuid.UUID(job_id),
                 job_name,
                 json.dumps(kwargs),
-                job_meta["retries"],
+                job_meta["retries"] + 1,  # max_attempts = retries + 1 (original attempt + retries)
                 final_priority,
                 final_queue,
                 scheduled_at,

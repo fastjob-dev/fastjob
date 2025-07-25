@@ -31,12 +31,7 @@ async def _run_embedded_worker_loop(
     global _shutdown_event
     _shutdown_event = asyncio.Event()
     
-    # Get a fresh pool for this event loop
-    try:
-        from fastjob.db.connection import close_pool
-        await close_pool()  # Close any existing pool from different event loop
-    except Exception:
-        pass  # Ignore errors from closing pools from different event loops
+    # Get a pool for this event loop
     pool = await get_pool()
     logger.info(f"Starting embedded worker (concurrency: {concurrency}, run_once: {run_once})")
     
@@ -78,6 +73,8 @@ async def _run_embedded_worker_loop(
             tasks = [asyncio.create_task(worker_task()) for _ in range(concurrency)]
             await asyncio.gather(*tasks, return_exceptions=True)
     finally:
+        # Don't close the pool here as it might be needed by tests
+        # The pool will be closed when explicitly requested
         logger.info("Embedded worker stopped")
 
 
