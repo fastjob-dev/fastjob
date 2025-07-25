@@ -68,7 +68,7 @@ async def test_free_features_compliance():
             job_record = await conn.fetchrow("SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id))
             assert job_record["status"] == "done"
             assert job_record["attempts"] >= 0
-            assert job_record["max_attempts"] == 3  # Retry mechanism
+            assert job_record["max_attempts"] == 4  # Retry mechanism (retries=3 -> max_attempts=4)
         
         # ✅ Internal DB connection pooling
         from fastjob.db.connection import _pool
@@ -162,7 +162,7 @@ async def test_dsl_usage_examples_compliance():
             # Module path includes the integration directory
             expected_job_name = "tests.integration.test_specification_compliance.send_email"
             assert job_record["job_name"] == expected_job_name
-            assert job_record["max_attempts"] == 3
+            assert job_record["max_attempts"] == 4  # retries=3 -> max_attempts=4
         
         # Spec Example 3: Scheduling Jobs (Pro) - if available
         if hasattr(fastjob, 'schedule') and hasattr(fastjob, 'every'):

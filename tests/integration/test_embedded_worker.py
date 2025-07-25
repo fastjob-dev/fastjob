@@ -4,6 +4,7 @@ Tests for the improved embedded worker implementation
 
 import pytest
 import asyncio
+import os
 from unittest.mock import patch, AsyncMock
 
 import fastjob
@@ -11,15 +12,31 @@ from fastjob.local import (
     start_embedded_worker, stop_embedded_worker, start_embedded_worker_async,
     is_embedded_worker_running, get_embedded_worker_status
 )
+from tests.db_utils import create_test_database, drop_test_database, clear_table
+from fastjob.db.connection import get_pool, close_pool
+
+# Set up test environment
+os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
 
 
 @pytest.fixture
 async def cleanup_worker():
-    """Ensure worker is stopped after each test"""
-    yield
+    """Ensure worker is stopped after each test and clean up database"""
+    # Aggressive cleanup before test
     await stop_embedded_worker()
-    # Give a moment for cleanup
-    await asyncio.sleep(0.1)
+    await close_pool()  # Close any existing pool
+    await create_test_database()
+    yield
+    # Aggressive cleanup after test
+    await stop_embedded_worker()
+    await close_pool()  # Ensure clean shutdown
+    await drop_test_database()
+    # Clear any global state that might interfere
+    from fastjob.local import _task, _shutdown_event
+    globals()['_task'] = None
+    globals()['_shutdown_event'] = None
+    # Give more time for cleanup
+    await asyncio.sleep(0.2)
 
 
 class TestEmbeddedWorkerSync:
@@ -177,7 +194,7 @@ class TestEmbeddedWorkerJobProcessing:
         """Test continuous job processing"""
         call_count = 0
         
-        async def mock_process_jobs(conn):
+        async def mock_process_jobs(conn, queue=None):
             nonlocal call_count
             call_count += 1
             # Simulate finding jobs for a few calls, then no jobs
@@ -211,7 +228,7 @@ class TestEmbeddedWorkerJobProcessing:
         """Test error handling in continuous mode"""
         call_count = 0
         
-        async def mock_process_jobs(conn):
+        async def mock_process_jobs(conn, queue=None):
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
@@ -221,8 +238,8 @@ class TestEmbeddedWorkerJobProcessing:
         with patch('fastjob.local.process_jobs', side_effect=mock_process_jobs):
             start_embedded_worker(poll_interval=0.05)
             
-            # Let it handle errors and continue
-            await asyncio.sleep(0.2)
+            # Let it handle errors and continue (worker waits 2s after error)
+            await asyncio.sleep(2.5)
             
             await stop_embedded_worker()
             
@@ -238,7 +255,7 @@ class TestEmbeddedWorkerConcurrency:
         """Test single worker (concurrency=1)"""
         process_calls = []
         
-        async def mock_process_jobs(conn):
+        async def mock_process_jobs(conn, queue=None):
             process_calls.append(asyncio.current_task())
             return len(process_calls) <= 2  # Process a few jobs then stop
         
@@ -254,7 +271,7 @@ class TestEmbeddedWorkerConcurrency:
         """Test multiple concurrent workers"""
         process_calls = []
         
-        async def mock_process_jobs(conn):
+        async def mock_process_jobs(conn, queue=None):
             process_calls.append(asyncio.current_task())
             await asyncio.sleep(0.1)  # Simulate work
             return len(process_calls) <= 6  # Process some jobs
@@ -326,7 +343,7 @@ class TestEmbeddedWorkerIntegration:
         
         job_executed = False
         
-        async def mock_process_jobs(conn):
+        async def mock_process_jobs(conn, queue=None):
             nonlocal job_executed
             if not job_executed:
                 job_executed = True
