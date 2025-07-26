@@ -3,9 +3,7 @@ Test FastJob compliance with FASTJOB_AGENT_README_v2.md specification
 """
 
 import pytest
-import asyncio
 import uuid
-from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 import fastjob

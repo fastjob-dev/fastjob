@@ -6,7 +6,6 @@ Tests worker registration, heartbeat updates, and monitoring functionality.
 
 import os
 import asyncio
-import time
 
 import pytest
 

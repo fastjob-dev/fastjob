@@ -6,9 +6,6 @@ retry failed ones, cancel long-running ones, etc. Real-world stuff that matters.
 """
 
 import pytest
-import asyncio
-from datetime import datetime, timedelta
-from typing import Optional
 
 import fastjob
 from tests.db_utils import create_test_database, drop_test_database, clear_table

@@ -7,13 +7,12 @@ import asyncio
 import json
 import uuid
 import os
-import time
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
-from pydantic import BaseModel, ValidationError
+from unittest.mock import patch
+from pydantic import BaseModel
 
 import fastjob
-from fastjob.core.processor import process_jobs, run_worker
+from fastjob.core.processor import process_jobs
 from fastjob.core.registry import get_job, clear_registry, _registry
 from fastjob.db.connection import get_pool, close_pool
 from tests.db_utils import create_test_database, drop_test_database, clear_table
@@ -503,13 +502,10 @@ async def test_cli_integration():
     await create_test_database()
     try:
         # Test CLI imports don't crash
-        from fastjob.cli.main import main
 
         # Test migration command exists
-        from fastjob.db.migrations import run_migrations
 
         # Test that we can import worker functions
-        from fastjob.core.processor import run_worker
 
         # Test basic argument parsing
         import argparse

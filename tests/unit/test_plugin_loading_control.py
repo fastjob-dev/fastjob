@@ -2,7 +2,6 @@
 Test the testing utilities for controlling plugin loading
 """
 
-import pytest
 
 # Set test database before importing fastjob modules
 import os

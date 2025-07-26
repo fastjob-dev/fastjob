@@ -8,7 +8,6 @@ to ensure system robustness in production environments.
 import os
 import json
 import uuid
-from typing import Optional
 
 import pytest
 from pydantic import BaseModel

@@ -128,8 +128,7 @@ def demo_embedded_worker():
     print("\n5️⃣ Embedded worker plugin loading:")
     print("-" * 38)
 
-    import fastjob
-    from fastjob.testing import disable_plugins, enable_plugins
+    from fastjob.testing import disable_plugins
 
     print("   🔄 Starting embedded worker (plugins will load automatically)")
 

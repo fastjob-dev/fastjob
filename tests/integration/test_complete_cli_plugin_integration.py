@@ -4,10 +4,7 @@ Tests the full plugin discovery and CLI integration workflow
 """
 
 import pytest
-import sys
-import os
-from unittest.mock import patch, MagicMock, call
-from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 # Import CLI components
 from fastjob.cli.main import load_plugin_commands, main

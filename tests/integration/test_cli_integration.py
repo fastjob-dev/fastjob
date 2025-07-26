@@ -5,7 +5,6 @@ Test suite for CLI integration and real command execution
 import pytest
 import subprocess
 import os
-import time
 import asyncio
 from pathlib import Path
 

@@ -4,9 +4,6 @@ Comprehensive tests for CLI plugin system across all FastJob packages
 
 import pytest
 import subprocess
-import sys
-import os
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 # Import the CLI components

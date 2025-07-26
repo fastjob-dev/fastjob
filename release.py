@@ -9,7 +9,7 @@ import sys
 import subprocess
 import argparse
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 
 class ReleaseManager:

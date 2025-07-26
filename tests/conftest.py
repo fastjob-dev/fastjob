@@ -3,7 +3,6 @@ import pytest
 import os
 from tests.db_utils import create_test_database, clear_table
 from fastjob.db.connection import get_pool, close_pool
-from fastjob.core.registry import clear_registry
 
 # Ensure test database URL is set
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"

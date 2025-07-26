@@ -25,8 +25,6 @@ Example usage for better test isolation:
 import pytest
 import asyncio
 import asyncpg
-import contextvars
-from unittest.mock import patch, AsyncMock
 
 from fastjob.db.connection import (
     get_pool,
@@ -37,7 +35,6 @@ from fastjob.db.connection import (
     _context_pool,
     _pool,
 )
-from fastjob.settings import get_settings
 from tests.db_utils import create_test_database, clear_table
 
 

@@ -69,7 +69,7 @@ async def send_idempotent_email(
         "idempotency_key": idempotency_key,
     }
 
-    print(f"   ✅ Email sent successfully")
+    print("   ✅ Email sent successfully")
     return result
 
 
@@ -155,7 +155,7 @@ async def process_file_idempotent(file_path: str, output_path: str) -> dict:
     output_exists = False  # Simulate checking output file
 
     if output_exists:
-        print(f"   ⚠️ Output file already exists with matching checksum")
+        print("   ⚠️ Output file already exists with matching checksum")
         return {
             "status": "already_processed",
             "input_path": file_path,
@@ -165,7 +165,7 @@ async def process_file_idempotent(file_path: str, output_path: str) -> dict:
         }
 
     # Process file (simulate processing)
-    print(f"   ⚙️ Processing file content...")
+    print("   ⚙️ Processing file content...")
     await asyncio.sleep(1)  # Simulate processing time
 
     processed_content = f"processed_{file_content}"
@@ -183,7 +183,7 @@ async def process_file_idempotent(file_path: str, output_path: str) -> dict:
         "processed_at": datetime.now().isoformat(),
     }
 
-    print(f"   ✅ File processed successfully")
+    print("   ✅ File processed successfully")
     return result
 
 
@@ -206,7 +206,7 @@ async def make_idempotent_api_call(
     # Check if we've already made this API call
     if idempotency_token in _api_calls:
         cached_response = _api_calls[idempotency_token]
-        print(f"   ♻️ Returning cached API response")
+        print("   ♻️ Returning cached API response")
         return {
             "status": "cached",
             "response": cached_response,
@@ -236,7 +236,7 @@ async def make_idempotent_api_call(
         "idempotency_token": idempotency_token,
     }
 
-    print(f"   ✅ API call completed successfully")
+    print("   ✅ API call completed successfully")
     return result
 
 

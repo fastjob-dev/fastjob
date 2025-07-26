@@ -15,8 +15,8 @@ from fastjob.local import (
     is_embedded_worker_running,
     get_embedded_worker_status,
 )
-from tests.db_utils import create_test_database, drop_test_database, clear_table
-from fastjob.db.connection import get_pool, close_pool
+from tests.db_utils import create_test_database, drop_test_database
+from fastjob.db.connection import close_pool
 
 # Set up test environment
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
@@ -35,7 +35,6 @@ async def cleanup_worker():
     await close_pool()  # Ensure clean shutdown
     await drop_test_database()
     # Clear any global state that might interfere
-    from fastjob.local import _task, _shutdown_event
 
     globals()["_task"] = None
     globals()["_shutdown_event"] = None

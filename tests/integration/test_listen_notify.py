@@ -21,7 +21,7 @@ import asyncio
 import time
 import statistics
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any
 
 from fastjob import job, enqueue, schedule
@@ -554,9 +554,9 @@ async def test_listen_notify_vs_polling_performance(
         else float("inf")
     )
 
-    print(f"✅ Performance Analysis:")
+    print("✅ Performance Analysis:")
     print(f"   LISTEN/NOTIFY delay: {avg_delay_ms:.1f}ms")
-    print(f"   Theoretical polling: 500ms average")
+    print("   Theoretical polling: 500ms average")
     print(f"   Performance improvement: {performance_improvement:.1f}x faster")
 
     # LISTEN/NOTIFY should be significantly faster than polling
@@ -671,7 +671,7 @@ async def test_overall_listen_notify_performance(test_db, clean_db, background_w
     overall_avg_delay = statistics.mean([r["avg_delay_ms"] for r in successful_tests])
     overall_max_delay = max([r["max_delay_ms"] for r in successful_tests])
 
-    print(f"✅ Overall LISTEN/NOTIFY Performance:")
+    print("✅ Overall LISTEN/NOTIFY Performance:")
     print(f"   Average delay across all tests: {overall_avg_delay:.1f}ms")
     print(f"   Maximum delay observed: {overall_max_delay:.1f}ms")
 

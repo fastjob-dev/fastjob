@@ -20,7 +20,6 @@ from tests.db_utils import create_test_database, drop_test_database, clear_table
 logging.basicConfig(level=logging.INFO)
 
 # Set test database URL for all tests
-import os
 
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
 

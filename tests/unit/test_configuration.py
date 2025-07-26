@@ -15,7 +15,6 @@ import os
 import tempfile
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 # Set test database before importing fastjob modules
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"

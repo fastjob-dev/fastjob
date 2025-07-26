@@ -3,11 +3,9 @@ Test suite for job scheduling functionality
 """
 
 import pytest
-import asyncio
 import time
 import uuid
 from datetime import datetime, timedelta
-from pydantic import BaseModel
 
 import fastjob
 from fastjob.core.processor import process_jobs

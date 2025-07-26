@@ -13,15 +13,12 @@ import time
 import subprocess
 import sys
 import tempfile
-import uuid
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
 
-import asyncpg
 
 from fastjob import job, enqueue
-from fastjob.core.processor import run_worker, process_jobs
-from fastjob.db.connection import create_pool, DatabaseContext
+from fastjob.core.processor import process_jobs
+from fastjob.db.connection import DatabaseContext
 from fastjob.settings import get_settings
 
 
@@ -495,7 +492,7 @@ if __name__ == "__main__":
                 process_throughput = job_count / process_time
 
                 # Log performance for analysis
-                print(f"\nPerformance Results:")
+                print("\nPerformance Results:")
                 print(f"  Enqueue throughput: {enqueue_throughput:.1f} jobs/sec")
                 print(f"  Process throughput: {process_throughput:.1f} jobs/sec")
                 print(f"  Total time: {enqueue_time + process_time:.3f}s")
