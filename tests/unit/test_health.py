@@ -321,119 +321,94 @@ class TestHealthMonitor:
 class TestHealthCheckFunctions:
     """Test individual health check functions."""
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_database_health_success(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_database_health_success(self, mock_fetchval):
         """Test successful database health check."""
-        # Mock database connection
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [
+        mock_fetchval.side_effect = [
             1,
             1,
             100,
         ]  # Basic check, tables exist, job count
-
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
 
         status, message = await check_database_health()
 
         assert status == HealthStatus.HEALTHY
         assert "100 jobs in queue" in message
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_database_health_wrong_result(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_database_health_wrong_result(self, mock_fetchval):
         """Test database health check with wrong query result."""
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.return_value = 2  # Wrong result
-
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
+        mock_fetchval.return_value = 2  # Wrong result
 
         status, message = await check_database_health()
 
         assert status == HealthStatus.UNHEALTHY
         assert "unexpected result" in message
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_database_health_no_tables(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_database_health_no_tables(self, mock_fetchval):
         """Test database health check with missing tables."""
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [1, 0]  # Basic check OK, no tables
-
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
+        mock_fetchval.side_effect = [1, 0]  # Basic check OK, no tables
 
         status, message = await check_database_health()
 
         assert status == HealthStatus.UNHEALTHY
         assert "run migrations" in message
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_database_health_exception(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_database_health_exception(self, mock_fetchval):
         """Test database health check with exception."""
-        mock_get_pool.side_effect = Exception("Connection failed")
+        mock_fetchval.side_effect = Exception("Connection failed")
 
         status, message = await check_database_health()
 
         assert status == HealthStatus.UNHEALTHY
         assert "Connection failed" in message
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_job_processing_health_stuck_jobs(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_job_processing_health_stuck_jobs(self, mock_fetchval):
         """Test job processing health with stuck jobs."""
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [
+        mock_fetchval.side_effect = [
             150,
             10,
             5,
             20,
         ]  # stuck, recent, failed, total
 
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
-
         status, message = await check_job_processing_health()
 
         assert status == HealthStatus.DEGRADED
         assert "150 jobs may be stuck" in message
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_job_processing_health_high_failure_rate(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_job_processing_health_high_failure_rate(self, mock_fetchval):
         """Test job processing health with high failure rate."""
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [
+        mock_fetchval.side_effect = [
             50,
             10,
             15,
             20,
         ]  # stuck, recent, failed, total
 
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
-
         status, message = await check_job_processing_health()
 
         assert status == HealthStatus.DEGRADED
         assert "High failure rate: 75.0%" in message
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_job_processing_health_healthy(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_job_processing_health_healthy(self, mock_fetchval):
         """Test healthy job processing."""
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [10, 50, 2, 20]  # stuck, recent, failed, total
-
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
+        mock_fetchval.side_effect = [10, 50, 2, 20]  # stuck, recent, failed, total
 
         status, message = await check_job_processing_health()
 
         assert status == HealthStatus.HEALTHY
         assert "50 recent updates" in message
 
-    @patch("fastjob.health.get_pool")
-    async def test_check_job_processing_health_exception(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_check_job_processing_health_exception(self, mock_fetchval):
         """Test job processing health check with exception."""
-        mock_get_pool.side_effect = Exception("Database error")
+        mock_fetchval.side_effect = Exception("Database error")
 
         status, message = await check_job_processing_health()
 
@@ -609,36 +584,28 @@ class TestHealthAPIFunctions:
 
         assert result is False
 
-    @patch("fastjob.health.get_pool")
-    async def test_is_ready_success(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_is_ready_success(self, mock_fetchval):
         """Test is_ready success."""
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [1, 1]  # Basic check, tables exist
-
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
+        mock_fetchval.side_effect = [1, 1]  # Basic check, tables exist
 
         result = await is_ready()
 
         assert result is True
 
-    @patch("fastjob.health.get_pool")
-    async def test_is_ready_no_tables(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_is_ready_no_tables(self, mock_fetchval):
         """Test is_ready with no tables."""
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [1, 0]  # Basic check OK, no tables
-
-        mock_pool = MockPool(mock_conn)
-        mock_get_pool.return_value = mock_pool
+        mock_fetchval.side_effect = [1, 0]  # Basic check OK, no tables
 
         result = await is_ready()
 
         assert result is False
 
-    @patch("fastjob.health.get_pool")
-    async def test_is_ready_exception(self, mock_get_pool):
+    @patch("fastjob.db.helpers.fetchval")
+    async def test_is_ready_exception(self, mock_fetchval):
         """Test is_ready with exception."""
-        mock_get_pool.side_effect = Exception("Connection failed")
+        mock_fetchval.side_effect = Exception("Connection failed")
 
         result = await is_ready()
 

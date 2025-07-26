@@ -181,21 +181,19 @@ async def _execute_job_safely(
 
     # Execute the job function (outside transaction)
     try:
-        try:
-            await job_meta["func"](**validated_args)
-            return True, None
-        except (TypeError, AttributeError) as func_error:
-            # Function signature mismatch or corrupted arguments
-            if (
-                "argument" in str(func_error).lower()
-                or "parameter" in str(func_error).lower()
-            ):
-                # This will be handled by the caller
-                raise ValueError(f"Function argument mismatch: {str(func_error)}") from func_error
-            else:
-                # Regular TypeError/AttributeError from job logic - should retry
-                raise
-
+        await job_meta["func"](**validated_args)
+        return True, None
+    except (TypeError, AttributeError) as func_error:
+        # Function signature mismatch or corrupted arguments
+        if (
+            "argument" in str(func_error).lower()
+            or "parameter" in str(func_error).lower()
+        ):
+            # This will be handled by the caller as corruption
+            raise ValueError(f"Function argument mismatch: {str(func_error)}") from func_error
+        else:
+            # Regular TypeError/AttributeError from job logic - should retry
+            return False, str(func_error)
     except Exception as e:
         # Regular job execution error (not corruption)
         return False, str(e)
