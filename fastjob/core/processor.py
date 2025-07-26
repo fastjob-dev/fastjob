@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import List, Optional, Union
 
 import asyncpg
@@ -17,7 +18,43 @@ from fastjob.core.registry import get_job
 logger = logging.getLogger(__name__)
 
 
-async def process_jobs(conn: asyncpg.Connection, queue: Optional[Union[str, List[str]]] = "default") -> bool:
+async def _move_job_to_dead_letter(
+    conn: asyncpg.Connection, 
+    job_id: uuid.UUID, 
+    max_attempts: int, 
+    error_message: str
+) -> None:
+    """
+    Move a job to dead letter queue due to corruption or permanent failure.
+    
+    Args:
+        conn: Database connection
+        job_id: Job ID to move
+        max_attempts: Maximum attempts for the job
+        error_message: Error description
+    """
+    async with conn.transaction():
+        await conn.execute(
+            """
+            UPDATE fastjob_jobs
+            SET status = 'dead_letter',
+                attempts = $2,
+                last_error = $3,
+                updated_at = NOW()
+            WHERE id = $1
+        """,
+            job_id,
+            max_attempts,
+            error_message,
+        )
+    logger.error(f"Job {job_id} moved to dead letter queue: {error_message}")
+
+
+async def process_jobs(
+    conn: asyncpg.Connection, 
+    queue: Optional[Union[str, List[str]]] = "default",
+    heartbeat: Optional['WorkerHeartbeat'] = None
+) -> bool:
     """
     Process a single job from the queue(s).
 
@@ -86,22 +123,52 @@ async def process_jobs(conn: asyncpg.Connection, queue: Optional[Union[str, List
 
         # Mark job as processing to prevent other workers from picking it up
         job_id = job_record["id"]
-        await conn.execute(
-            """
-            UPDATE fastjob_jobs
-            SET status = 'processing',
-                updated_at = NOW()
-            WHERE id = $1
-        """,
-            job_id,
-        )
+        if heartbeat:
+            # Update job with worker tracking
+            await conn.execute(
+                """
+                UPDATE fastjob_jobs
+                SET status = 'processing',
+                    worker_id = $2,
+                    updated_at = NOW()
+                WHERE id = $1
+            """,
+                job_id,
+                heartbeat.worker_id,
+            )
+        else:
+            await conn.execute(
+                """
+                UPDATE fastjob_jobs
+                SET status = 'processing',
+                    updated_at = NOW()
+                WHERE id = $1
+            """,
+                job_id,
+            )
 
     # Step 2: Extract job details (outside transaction)
     job_id = job_record["id"]
     job_name = job_record["job_name"]
-    args_data = json.loads(job_record["args"])
     attempts = job_record["attempts"]
     max_attempts = job_record["max_attempts"]
+    
+    # Parse job arguments with corruption handling
+    try:
+        args_data = json.loads(job_record["args"])
+    except (Exception) as e:
+        # Catch both JSONDecodeError and TypeError broadly for corrupted data
+        if "json" in str(type(e)).lower() or isinstance(e, (TypeError, ValueError)):
+            # Corrupted JSON data - move to dead letter immediately
+            logger.error(f"Job {job_id} has corrupted JSON data: {e}")
+            await _move_job_to_dead_letter(
+                conn, job_id, max_attempts,
+                f"Corrupted JSON data: {str(e)}"
+            )
+            return True
+        else:
+            # Other exception types - re-raise
+            raise
 
     # Basic logging
     start_time = time.time()
@@ -134,13 +201,35 @@ async def process_jobs(conn: asyncpg.Connection, queue: Optional[Union[str, List
         # Validate arguments if model is specified
         args_model = job_meta.get("args_model")
         if args_model:
-            validated_args = args_model(**args_data).model_dump()
+            try:
+                validated_args = args_model(**args_data).model_dump()
+            except (TypeError, ValueError, AttributeError) as validation_error:
+                # Argument validation failed - data structure is corrupted
+                logger.error(f"Job {job_id} has corrupted argument data: {validation_error}")
+                await _move_job_to_dead_letter(
+                    conn, job_id, max_attempts,
+                    f"Corrupted argument data: {str(validation_error)}"
+                )
+                return True
         else:
             validated_args = args_data
 
         # Execute the job function (outside transaction)
-        await job_meta["func"](**validated_args)
-        job_success = True
+        try:
+            await job_meta["func"](**validated_args)
+            job_success = True
+        except (TypeError, AttributeError) as func_error:
+            # Function signature mismatch or corrupted arguments
+            if "argument" in str(func_error).lower() or "parameter" in str(func_error).lower():
+                logger.error(f"Job {job_id} has argument mismatch: {func_error}")
+                await _move_job_to_dead_letter(
+                    conn, job_id, max_attempts,
+                    f"Function argument mismatch: {str(func_error)}"
+                )
+                return True
+            else:
+                # Regular TypeError/AttributeError from job logic - should retry
+                raise
 
     except Exception as e:
         job_error = str(e)
@@ -169,18 +258,20 @@ async def process_jobs(conn: asyncpg.Connection, queue: Optional[Union[str, List
                     f"Job {job_id} completed successfully in {duration_ms}ms (deleted immediately)"
                 )
             else:
-                # Keep with status 'done' (TTL expiration not implemented yet)
+                # Keep with status 'done' and set expires_at for TTL cleanup
                 await conn.execute(
                     """
                     UPDATE fastjob_jobs
                     SET status = 'done',
+                        expires_at = NOW() + ($2 || ' seconds')::INTERVAL,
                         updated_at = NOW()
                     WHERE id = $1
                 """,
                     job_id,
+                    str(settings.result_ttl),
                 )
                 logger.info(
-                    f"Job {job_id} completed successfully in {duration_ms}ms (kept as done)"
+                    f"Job {job_id} completed successfully in {duration_ms}ms (expires in {settings.result_ttl}s)"
                 )
         else:
             # Job failed - increment attempts
@@ -242,6 +333,7 @@ async def run_worker(
     """
     from fastjob.db.connection import create_pool
     from fastjob.settings import get_settings
+    from fastjob.core.heartbeat import WorkerHeartbeat, cleanup_stale_workers
 
     db_url = database_url or get_settings().database_url
     try:
@@ -268,6 +360,11 @@ async def run_worker(
             else:
                 logger.warning("No database pool available for run_once processing")
         else:
+            # Create worker heartbeat system
+            heartbeat = WorkerHeartbeat(pool, queues, concurrency)
+            await heartbeat.register_worker()
+            await heartbeat.start_heartbeat()
+            
             # Continuous processing with LISTEN/NOTIFY
             async def worker():
                 # Each worker needs its own connection for LISTEN/NOTIFY
@@ -296,7 +393,7 @@ async def run_worker(
                             # Use separate connection for job processing to avoid blocking LISTEN
                             async with pool.acquire() as job_conn:
                                 # Process jobs efficiently - single query regardless of queue specification
-                                processed = await process_jobs(job_conn, queues)
+                                processed = await process_jobs(job_conn, queues, heartbeat)
                                 if processed:
                                     any_processed = True
 
@@ -318,13 +415,15 @@ async def run_worker(
                                                 if cleaned
                                                 else 0
                                             )
-                                            last_cleanup = current_time
                                             if cleaned_count > 0:
                                                 logger.debug(
                                                     f"Cleaned up {cleaned_count} expired jobs"
                                                 )
-                                        else:
-                                            last_cleanup = current_time
+                                        
+                                        # Clean up stale workers (no heartbeat in 5+ minutes)
+                                        stale_workers = await cleanup_stale_workers(pool, stale_threshold_seconds=300)
+                                        
+                                        last_cleanup = current_time
                                     except Exception as cleanup_error:
                                         logger.warning(
                                             f"Cleanup failed: {cleanup_error}"
@@ -371,6 +470,9 @@ async def run_worker(
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
+            finally:
+                # Stop heartbeat system
+                await heartbeat.stop_heartbeat()
     finally:
         if pool:
             await pool.close()

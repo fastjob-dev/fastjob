@@ -57,6 +57,7 @@ def main():
             [
                 "tests/integration/test_cli_integration.py",
                 "tests/integration/test_complete_cli_plugin_integration.py",
+                "tests/integration/test_cli_queue_behavior.py",
             ],
         ),
         (
@@ -71,6 +72,24 @@ def main():
             "Queue Processing Behavior",
             [
                 "tests/integration/test_queue_processing_behavior.py",
+            ],
+        ),
+        (
+            "TTL & Job Cleanup",
+            [
+                "tests/integration/test_ttl_functionality.py",
+            ],
+        ),
+        (
+            "Worker Heartbeat System",
+            [
+                "tests/integration/test_worker_heartbeat.py",
+            ],
+        ),
+        (
+            "Corrupted Data Handling",
+            [
+                "tests/integration/test_corrupted_data_handling.py",
             ],
         ),
         (
