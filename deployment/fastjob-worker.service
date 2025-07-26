@@ -16,7 +16,7 @@ WorkingDirectory=/opt/fastjob
 Environment=FASTJOB_DATABASE_URL=postgresql://fastjob:password@localhost/fastjob_prod
 Environment=FASTJOB_LOG_LEVEL=INFO
 Environment=FASTJOB_JOBS_MODULE=myapp.jobs
-ExecStart=/opt/fastjob/venv/bin/fastjob worker --concurrency=4 --queues=default,urgent,background
+ExecStart=/opt/fastjob/venv/bin/fastjob worker --concurrency=4
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 Restart=always

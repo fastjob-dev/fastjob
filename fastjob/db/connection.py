@@ -1,5 +1,5 @@
 """
-Database connection management with context suppor
+Database connection management with context support
 """
 
 import contextvars
@@ -31,7 +31,7 @@ async def get_pool() -> asyncpg.Pool:
     First checks for context-local pool, then falls back to global pool.
     This allows for better testing and integration while maintaining backward compatibility.
     """
-    # Check if we have a context-local pool firs
+    # Check if we have a context-local pool first
     context_pool = _context_pool.get(None)
     if context_pool is not None:
         return context_pool

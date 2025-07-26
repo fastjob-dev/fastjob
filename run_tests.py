@@ -68,6 +68,12 @@ def main():
         ("Scheduling & Timing", ["tests/integration/test_scheduling.py"]),
         ("LISTEN/NOTIFY Performance", ["tests/integration/test_listen_notify.py"]),
         (
+            "Queue Processing Behavior",
+            [
+                "tests/integration/test_queue_processing_behavior.py",
+            ],
+        ),
+        (
             "Specification Compliance",
             ["tests/integration/test_specification_compliance.py"],
         ),

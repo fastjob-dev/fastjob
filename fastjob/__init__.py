@@ -107,7 +107,7 @@ def load_plugins():
     Load FastJob plugins.
 
     This function is called automatically when you use FastJob operations,
-    unless disabled via fastjob.testing utilities. You can also call i
+    unless disabled via fastjob.testing utilities. You can also call it
     explicitly if needed.
 
     Examples:

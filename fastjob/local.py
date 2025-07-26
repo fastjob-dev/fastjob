@@ -149,10 +149,10 @@ def start_embedded_worker(
         # Process only specific queues
         fastjob.start_embedded_worker(queues=["urgent", "critical"])
 
-        # For testing - process once and exi
+        # For testing - process once and exit
         fastjob.start_embedded_worker(run_once=True)
 
-        # Higher concurrency for busy developmen
+        # Higher concurrency for busy development
         fastjob.start_embedded_worker(concurrency=4)
     """
     # Ensure plugins are loaded when starting embedded worker
@@ -238,7 +238,7 @@ async def stop_embedded_worker():
 
     if _task:
         try:
-            await asyncio.wait_for(_task, timeout=5.0)  # Reduced timeou
+            await asyncio.wait_for(_task, timeout=5.0)  # Reduced timeout
         except asyncio.TimeoutError:
             logger.warning("Embedded worker didn't stop gracefully, cancelling...")
             _task.cancel()

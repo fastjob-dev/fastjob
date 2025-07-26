@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Optional
+from typing import List, Optional, Union
 
 import asyncpg
 
@@ -17,16 +17,19 @@ from fastjob.core.registry import get_job
 logger = logging.getLogger(__name__)
 
 
-async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool:
+async def process_jobs(conn: asyncpg.Connection, queue: Optional[Union[str, List[str]]] = "default") -> bool:
     """
-    Process a single job from the queue.
+    Process a single job from the queue(s).
 
     This function has been refactored to execute jobs OUTSIDE of database transactions
     to prevent long-running jobs from holding database locks and causing deadlocks.
 
     Args:
         conn: Database connection
-        queue: Queue name to process jobs from
+        queue: Queue specification:
+               - None: Process from any queue (no filtering)
+               - str: Process from single specific queue
+               - List[str]: Process from multiple specific queues efficiently
 
     Returns:
         bool: True if a job was processed, False if no jobs available
@@ -38,18 +41,46 @@ async def process_jobs(conn: asyncpg.Connection, queue: str = "default") -> bool
         await conn.execute("SET timezone = 'UTC'")
 
         # Lock and fetch the next job (ordered by priority then scheduled time)
-        job_record = await conn.fetchrow(
+        if queue is None:
+            # Process from ANY queue (no filtering)
+            job_record = await conn.fetchrow(
+                """
+                SELECT * FROM fastjob_jobs
+                WHERE status = 'queued'
+                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+                ORDER BY priority ASC, scheduled_at ASC NULLS FIRST, created_at ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
             """
-            SELECT * FROM fastjob_jobs
-            WHERE status = 'queued'
-            AND queue = $1
-            AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-            ORDER BY priority ASC, scheduled_at ASC NULLS FIRST, created_at ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1
-        """,
-            queue,
-        )
+            )
+        elif isinstance(queue, list):
+            # Process from multiple specific queues efficiently
+            job_record = await conn.fetchrow(
+                """
+                SELECT * FROM fastjob_jobs
+                WHERE status = 'queued'
+                AND queue = ANY($1)
+                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+                ORDER BY priority ASC, scheduled_at ASC NULLS FIRST, created_at ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            """,
+                queue,
+            )
+        else:
+            # Process from single specific queue
+            job_record = await conn.fetchrow(
+                """
+                SELECT * FROM fastjob_jobs
+                WHERE status = 'queued'
+                AND queue = $1
+                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+                ORDER BY priority ASC, scheduled_at ASC NULLS FIRST, created_at ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            """,
+                queue,
+            )
         if not job_record:
             return False
 
@@ -205,9 +236,9 @@ async def run_worker(
 
     Args:
         concurrency: Number of concurrent job processors
-        run_once: If True, process available jobs once and exi
+        run_once: If True, process available jobs once and exit
         database_url: Database URL to connect to
-        queues: List of queue names to process. If None, processes 'default' queue
+        queues: List of queue names to process. If None, discovers and processes all available queues
     """
     from fastjob.db.connection import create_pool
     from fastjob.settings import get_settings
@@ -219,12 +250,12 @@ async def run_worker(
         logger.error(f"Failed to create database pool: {e}")
         raise
 
-    # Default to processing the 'default' queue
-    if queues is None:
-        queues = ["default"]
+    # queues=None means process jobs from ALL queues (no filtering)
+    # queues=["specific"] means process only from those specific queues
 
+    queue_info = "all queues" if queues is None else f"queues: {queues}"
     logger.info(
-        f"Starting FastJob worker - concurrency: {concurrency}, queues: {queues}"
+        f"Starting FastJob worker - concurrency: {concurrency}, processing: {queue_info}"
     )
 
     try:
@@ -232,8 +263,8 @@ async def run_worker(
             # Process jobs once from all queues
             if pool:
                 async with pool.acquire() as conn:
-                    for queue in queues:
-                        await process_jobs(conn, queue)
+                    # Process jobs efficiently - single query regardless of queue specification
+                    await process_jobs(conn, queues)
             else:
                 logger.warning("No database pool available for run_once processing")
         else:
@@ -259,21 +290,21 @@ async def run_worker(
 
                     while True:
                         try:
-                            # Process jobs from all queues firs
+                            # Process jobs from all queues first
                             any_processed = False
 
                             # Use separate connection for job processing to avoid blocking LISTEN
                             async with pool.acquire() as job_conn:
-                                for queue in queues:
-                                    processed = await process_jobs(job_conn, queue)
-                                    if processed:
-                                        any_processed = True
+                                # Process jobs efficiently - single query regardless of queue specification
+                                processed = await process_jobs(job_conn, queues)
+                                if processed:
+                                    any_processed = True
 
                                 # Run periodic cleanup of expired jobs
                                 current_time = time.time()
                                 if current_time - last_cleanup > cleanup_interval:
                                     try:
-                                        # Clean up expired completed jobs if RESULT_TTL is se
+                                        # Clean up expired completed jobs if RESULT_TTL is set
                                         from fastjob.settings import get_settings
 
                                         settings = get_settings()
@@ -303,9 +334,9 @@ async def run_worker(
                                         )
 
                             if not any_processed:
-                                # No jobs available, wait for NOTIFY with timeou
+                                # No jobs available, wait for NOTIFY with timeout
                                 try:
-                                    # Wait for notification with 5 second timeou
+                                    # Wait for notification with 5 second timeoaut
                                     await asyncio.wait_for(
                                         notification_event.wait(), timeout=5.0
                                     )

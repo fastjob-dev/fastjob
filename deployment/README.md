@@ -307,7 +307,11 @@ find /backup -name "fastjob_backup_*.sql" -mtime +7 -delete
 - **CPU**: 1 core per 4 concurrent jobs recommended
 - **Queues**: Separate queues by priority and type
   ```bash
-  fastjob worker --queues urgent,default,background --concurrency 4
+  # Process all queues (default behavior)
+  fastjob worker --concurrency 4
+  
+  # Or target specific queues only
+  fastjob worker --queues urgent,background --concurrency 4
   ```
 
 ### Database Optimization

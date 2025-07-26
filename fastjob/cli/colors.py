@@ -11,7 +11,7 @@ from typing import Optional
 class Colors:
     """ANSI color codes for terminal output."""
 
-    # Rese
+    # Reset
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
@@ -195,9 +195,9 @@ def print_status(message: str, status: str = "info", prefix: str = ""):
     Print a status message with appropriate styling.
 
     Args:
-        message: Message to prin
+        message: Message to print
         status: Status type (success, error, warning, info)
-        prefix: Optional prefix tex
+        prefix: Optional prefix text
     """
     icon_map = {
         "success": StatusIcon.success(),
@@ -270,7 +270,7 @@ def print_progress_bar(
         current: Current progress value
         total: Total progress value
         width: Width of progress bar
-        prefix: Prefix tex
+        prefix: Prefix text
     """
     if total == 0:
         percentage = 100
@@ -300,8 +300,8 @@ def print_key_value(key: str, value: str, indent: int = 0):
     Print a key-value pair with styling.
 
     Args:
-        key: Key tex
-        value: Value tex
+        key: Key text
+        value: Value text
         indent: Indentation level
     """
     indent_str = "  " * indent
@@ -317,7 +317,7 @@ def print_list(items: list, bullet: str = "•", indent: int = 0):
     Print a styled list.
 
     Args:
-        items: List items to prin
+        items: List items to print
         bullet: Bullet character
         indent: Indentation level
     """
@@ -357,7 +357,7 @@ def confirm(message: str, default: bool = False) -> bool:
         return response in ("y", "yes", "true", "1")
 
     except (KeyboardInterrupt, EOFError):
-        print()  # New line after interrup
+        print()  # New line after interrupt
         return False
 
 
@@ -387,5 +387,5 @@ def prompt(message: str, default: Optional[str] = None) -> str:
         return response if response else (default or "")
 
     except (KeyboardInterrupt, EOFError):
-        print()  # New line after interrup
+        print()  # New line after interrupt
         return default or ""

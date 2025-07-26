@@ -44,7 +44,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp  # Mount your application code
-    command: ["fastjob", "worker", "--concurrency=4", "--queues=default,urgent,background"]
+    command: ["fastjob", "worker", "--concurrency=4"]
     healthcheck:
       test: ["CMD", "fastjob", "health"]
       interval: 30s

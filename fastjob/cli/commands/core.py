@@ -7,7 +7,7 @@ from ..registry import register_simple_command
 
 
 def register_core_commands():
-    """Register all core CLI commands using the new registry system."""
+    """Register all core CLI commands using the registry system."""
 
     # Start command (worker functionality)
     register_simple_command(
@@ -27,8 +27,8 @@ def register_core_commands():
             {
                 "args": ["--queues"],
                 "kwargs": {
-                    "default": "default",
-                    "help": "Comma-separated list of queues to process (default: default)",
+                    "default": None,
+                    "help": "Comma-separated list of queues to process (default: all queues)",
                 },
             },
             {
@@ -99,10 +99,16 @@ async def handle_start_command(args):
     """Handle start command (worker functionality)"""
     from fastjob.core.processor import run_worker
 
-    queues = [q.strip() for q in args.queues.split(",")]
+    # Handle queue specification
+    if args.queues is None:
+        queues = None  # Let run_worker discover all queues
+        queue_msg = "all available queues"
+    else:
+        queues = [q.strip() for q in args.queues.split(",")]
+        queue_msg = ", ".join(queues)
 
     print_status(f"Starting FastJob worker with {args.concurrency} workers", "info")
-    print_status(f"Processing queues: {', '.join(queues)}", "info")
+    print_status(f"Processing queues: {queue_msg}", "info")
 
     try:
         await run_worker(

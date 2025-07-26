@@ -132,7 +132,11 @@ fastjob.start_embedded_worker()
 **Production:** Jobs run in separate worker processes (better for scale)
 
 ```bash
-fastjob start --concurrency 4 --queues default,urgent
+# Process all available queues (default behavior)
+fastjob start --concurrency 4
+
+# Or target specific queues only
+fastjob start --concurrency 4 --queues urgent,background
 ```
 
 Same `@fastjob.job()` functions, same `enqueue()` calls. Just different worker management.

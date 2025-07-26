@@ -19,7 +19,7 @@ def discover_jobs():
     # Get the jobs module name from environment variable, default to "jobs"
     jobs_module_name = os.environ.get("FASTJOB_JOBS_MODULE", "jobs")
 
-    # Try the configured jobs module firs
+    # Try the configured jobs module first
     try:
         module = importlib.import_module(jobs_module_name)
         _import_jobs_from_module(module)
