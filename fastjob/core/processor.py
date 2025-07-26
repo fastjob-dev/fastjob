@@ -19,14 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 async def _move_job_to_dead_letter(
-    conn: asyncpg.Connection, 
-    job_id: uuid.UUID, 
-    max_attempts: int, 
-    error_message: str
+    conn: asyncpg.Connection, job_id: uuid.UUID, max_attempts: int, error_message: str
 ) -> None:
     """
     Move a job to dead letter queue due to corruption or permanent failure.
-    
+
     Args:
         conn: Database connection
         job_id: Job ID to move
@@ -51,9 +48,9 @@ async def _move_job_to_dead_letter(
 
 
 async def process_jobs(
-    conn: asyncpg.Connection, 
+    conn: asyncpg.Connection,
     queue: Optional[Union[str, List[str]]] = "default",
-    heartbeat: Optional['WorkerHeartbeat'] = None
+    heartbeat: Optional["WorkerHeartbeat"] = None,
 ) -> bool:
     """
     Process a single job from the queue(s).
@@ -152,18 +149,17 @@ async def process_jobs(
     job_name = job_record["job_name"]
     attempts = job_record["attempts"]
     max_attempts = job_record["max_attempts"]
-    
+
     # Parse job arguments with corruption handling
     try:
         args_data = json.loads(job_record["args"])
-    except (Exception) as e:
+    except Exception as e:
         # Catch both JSONDecodeError and TypeError broadly for corrupted data
         if "json" in str(type(e)).lower() or isinstance(e, (TypeError, ValueError)):
             # Corrupted JSON data - move to dead letter immediately
             logger.error(f"Job {job_id} has corrupted JSON data: {e}")
             await _move_job_to_dead_letter(
-                conn, job_id, max_attempts,
-                f"Corrupted JSON data: {str(e)}"
+                conn, job_id, max_attempts, f"Corrupted JSON data: {str(e)}"
             )
             return True
         else:
@@ -205,10 +201,14 @@ async def process_jobs(
                 validated_args = args_model(**args_data).model_dump()
             except (TypeError, ValueError, AttributeError) as validation_error:
                 # Argument validation failed - data structure is corrupted
-                logger.error(f"Job {job_id} has corrupted argument data: {validation_error}")
+                logger.error(
+                    f"Job {job_id} has corrupted argument data: {validation_error}"
+                )
                 await _move_job_to_dead_letter(
-                    conn, job_id, max_attempts,
-                    f"Corrupted argument data: {str(validation_error)}"
+                    conn,
+                    job_id,
+                    max_attempts,
+                    f"Corrupted argument data: {str(validation_error)}",
                 )
                 return True
         else:
@@ -220,11 +220,16 @@ async def process_jobs(
             job_success = True
         except (TypeError, AttributeError) as func_error:
             # Function signature mismatch or corrupted arguments
-            if "argument" in str(func_error).lower() or "parameter" in str(func_error).lower():
+            if (
+                "argument" in str(func_error).lower()
+                or "parameter" in str(func_error).lower()
+            ):
                 logger.error(f"Job {job_id} has argument mismatch: {func_error}")
                 await _move_job_to_dead_letter(
-                    conn, job_id, max_attempts,
-                    f"Function argument mismatch: {str(func_error)}"
+                    conn,
+                    job_id,
+                    max_attempts,
+                    f"Function argument mismatch: {str(func_error)}",
                 )
                 return True
             else:
@@ -364,7 +369,7 @@ async def run_worker(
             heartbeat = WorkerHeartbeat(pool, queues, concurrency)
             await heartbeat.register_worker()
             await heartbeat.start_heartbeat()
-            
+
             # Continuous processing with LISTEN/NOTIFY
             async def worker():
                 # Each worker needs its own connection for LISTEN/NOTIFY
@@ -393,7 +398,9 @@ async def run_worker(
                             # Use separate connection for job processing to avoid blocking LISTEN
                             async with pool.acquire() as job_conn:
                                 # Process jobs efficiently - single query regardless of queue specification
-                                processed = await process_jobs(job_conn, queues, heartbeat)
+                                processed = await process_jobs(
+                                    job_conn, queues, heartbeat
+                                )
                                 if processed:
                                     any_processed = True
 
@@ -419,10 +426,12 @@ async def run_worker(
                                                 logger.debug(
                                                     f"Cleaned up {cleaned_count} expired jobs"
                                                 )
-                                        
+
                                         # Clean up stale workers (no heartbeat in 5+ minutes)
-                                        stale_workers = await cleanup_stale_workers(pool, stale_threshold_seconds=300)
-                                        
+                                        stale_workers = await cleanup_stale_workers(
+                                            pool, stale_threshold_seconds=300
+                                        )
+
                                         last_cleanup = current_time
                                     except Exception as cleanup_error:
                                         logger.warning(

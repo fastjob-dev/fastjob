@@ -8,12 +8,12 @@
 
 Choose your deployment method:
 
-| Method | Best For | Complexity | 
-|--------|----------|------------|
-| [**Supervisor**](#supervisor-deployment) | Simple production setups | ⭐ Easy |
-| [**systemd**](#systemd-deployment) | Modern Linux servers | ⭐⭐ Medium |
-| [**Docker Compose**](#docker-compose-deployment) | Containerized apps | ⭐⭐ Medium |
-| [**Kubernetes**](#kubernetes-deployment) | Large scale deployments | ⭐⭐⭐ Advanced |
+| Method                                           | Best For                 | Complexity      |
+| ------------------------------------------------ | ------------------------ | --------------- |
+| [**Supervisor**](#supervisor-deployment)         | Simple production setups | ⭐ Easy         |
+| [**systemd**](#systemd-deployment)               | Modern Linux servers     | ⭐⭐ Medium     |
+| [**Docker Compose**](#docker-compose-deployment) | Containerized apps       | ⭐⭐ Medium     |
+| [**Kubernetes**](#kubernetes-deployment)         | Large scale deployments  | ⭐⭐⭐ Advanced |
 
 ---
 
@@ -22,11 +22,13 @@ Choose your deployment method:
 ### ✅ System Requirements
 
 **Minimum Requirements:**
+
 - Python 3.10+
 - PostgreSQL 12+
 - 2GB RAM, 2 CPU cores
 
 **Recommended for Production:**
+
 - Python 3.12+
 - PostgreSQL 15+
 - 4GB+ RAM, 4+ CPU cores
@@ -76,6 +78,7 @@ sudo chown fastjob:fastjob /opt/fastjob /var/log/fastjob
 **Perfect for:** Simple production setups, shared hosting, traditional servers
 
 #### Install Supervisor
+
 ```bash
 # Ubuntu/Debian
 sudo apt install supervisor
@@ -85,6 +88,7 @@ sudo yum install supervisor
 ```
 
 #### Setup FastJob
+
 ```bash
 # Install in virtual environment
 sudo -u fastjob python3 -m venv /opt/fastjob/venv
@@ -98,8 +102,9 @@ sudo nano /etc/supervisor/conf.d/fastjob.conf
 ```
 
 #### Start Services
+
 ```bash
-# Reload supervisor configuration  
+# Reload supervisor configuration
 sudo supervisorctl reread
 sudo supervisorctl update
 
@@ -120,6 +125,7 @@ sudo supervisorctl status
 **Perfect for:** Modern Linux servers, automated deployments, production environments
 
 #### Setup FastJob
+
 ```bash
 # Install FastJob
 sudo -u fastjob python3 -m venv /opt/fastjob/venv
@@ -134,6 +140,7 @@ sudo nano /etc/systemd/system/fastjob-worker.service
 ```
 
 #### Configure Services
+
 ```bash
 # Reload systemd
 sudo systemctl daemon-reload
@@ -148,6 +155,7 @@ sudo systemctl start fastjob-dashboard  # Pro/Enterprise only
 ```
 
 #### Monitor Services
+
 ```bash
 # Check status
 sudo systemctl status fastjob-worker
@@ -168,10 +176,12 @@ sudo systemctl restart fastjob-worker
 **Perfect for:** Containerized environments, development-to-production consistency
 
 #### Prerequisites
+
 - Docker 20.04+
 - Docker Compose 2.0+
 
 #### Deploy Stack
+
 ```bash
 # Copy docker-compose.yml
 cp docker-compose.yml /opt/fastjob/
@@ -185,11 +195,13 @@ docker-compose up -d
 ```
 
 #### Stack Components
+
 - **postgres** - PostgreSQL database
-- **fastjob-worker** - Job processing workers  
+- **fastjob-worker** - Job processing workers
 - **fastjob-dashboard** - Web dashboard (Pro/Enterprise)
 
 #### Monitor Stack
+
 ```bash
 # View running containers
 docker-compose ps
@@ -210,17 +222,19 @@ docker-compose up -d --scale fastjob-worker=3
 **Perfect for:** Large scale deployments, high availability, cloud environments
 
 #### Prerequisites
+
 - Kubernetes cluster 1.20+
 - kubectl configured
 - External PostgreSQL database
 
 #### Deploy to Kubernetes
+
 ```bash
 # Update database connection in kubernetes.yaml
 # (Base64 encode your database URL)
 echo -n "postgresql://user:pass@host/db" | base64
 
-# Apply configuration  
+# Apply configuration
 kubectl apply -f kubernetes.yaml
 
 # Verify deployment
@@ -229,6 +243,7 @@ kubectl get services -l app=fastjob
 ```
 
 #### Scale Workers
+
 ```bash
 # Scale workers based on load
 kubectl scale deployment fastjob-worker --replicas=5
@@ -238,6 +253,7 @@ kubectl autoscale deployment fastjob-worker --cpu-percent=70 --min=2 --max=10
 ```
 
 #### Monitor Deployment
+
 ```bash
 # View pod status
 kubectl get pods
@@ -256,15 +272,17 @@ kubectl top pods
 ## 📊 Monitoring & Maintenance
 
 ### Health Checks
+
 ```bash
 # Basic health check
 fastjob health --verbose
 
-# Readiness probe (for load balancers)  
+# Readiness probe (for load balancers)
 fastjob ready
 ```
 
 ### Job Management
+
 ```bash
 # View job status
 fastjob jobs list --status failed --limit 20
@@ -278,10 +296,11 @@ fastjob jobs cancel <job-id>
 ```
 
 ### Database Monitoring
+
 ```bash
 # Check for stuck jobs
 psql $FASTJOB_DATABASE_URL -c "
-  SELECT COUNT(*) FROM fastjob_jobs 
+  SELECT COUNT(*) FROM fastjob_jobs
   WHERE status='queued' AND created_at < NOW() - INTERVAL '1 hour';
 "
 
@@ -290,6 +309,7 @@ psql $FASTJOB_DATABASE_URL -c "SELECT * FROM pg_stat_activity;"
 ```
 
 ### Backup Strategy
+
 ```bash
 #!/bin/bash
 # Daily backup script
@@ -303,18 +323,21 @@ find /backup -name "fastjob_backup_*.sql" -mtime +7 -delete
 ## 🔧 Performance Tuning
 
 ### Worker Optimization
+
 - **Memory**: 512MB per worker process minimum
 - **CPU**: 1 core per 4 concurrent jobs recommended
 - **Queues**: Separate queues by priority and type
+
   ```bash
   # Process all queues (default behavior)
-  fastjob worker --concurrency 4
-  
+  fastjob start --concurrency 4
+
   # Or target specific queues only
-  fastjob worker --queues urgent,background --concurrency 4
+  fastjob start --queues urgent,background --concurrency 4
   ```
 
 ### Database Optimization
+
 ```sql
 -- Add performance indexes
 CREATE INDEX CONCURRENTLY idx_fastjob_jobs_status_queue ON fastjob_jobs(status, queue);
@@ -327,6 +350,7 @@ max_connections = 200
 ```
 
 ### Connection Pooling
+
 FastJob includes built-in connection pooling. For high-scale deployments:
 
 ```python
@@ -342,6 +366,7 @@ FASTJOB_DB_POOL_MAX_SIZE = 50
 ### Common Issues
 
 **Workers not processing jobs**
+
 ```bash
 # Check database connectivity
 fastjob health --verbose
@@ -354,6 +379,7 @@ sudo systemctl restart fastjob-worker
 ```
 
 **High memory usage**
+
 ```bash
 # Reduce worker concurrency
 fastjob worker --concurrency 2
@@ -363,6 +389,7 @@ fastjob worker --concurrency 2
 ```
 
 **Database connection errors**
+
 ```bash
 # Verify connection string
 echo $FASTJOB_DATABASE_URL
@@ -375,11 +402,12 @@ psql $FASTJOB_DATABASE_URL -c "SELECT * FROM pg_stat_activity;"
 ```
 
 ### Log Analysis
+
 ```bash
 # systemd logs
 sudo journalctl -u fastjob-worker --since "1 hour ago"
 
-# Supervisor logs  
+# Supervisor logs
 sudo tail -f /var/log/supervisor/fastjob_worker.log
 
 # Docker logs

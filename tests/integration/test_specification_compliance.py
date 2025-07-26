@@ -278,6 +278,7 @@ async def test_project_structure_compliance():
 
     # Check main directories exist
     import fastjob
+
     base_path = os.path.dirname(fastjob.__file__)
 
     required_dirs = [

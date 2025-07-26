@@ -166,7 +166,7 @@ class StatusIcon:
     def rocket() -> str:
         """Rocket icon."""
         return highlight("🚀") if supports_color() else ">>>"
-    
+
     @staticmethod
     def workers() -> str:
         """Workers icon."""

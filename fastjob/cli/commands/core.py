@@ -96,7 +96,10 @@ def register_core_commands():
             },
             {
                 "args": ["--cleanup"],
-                "kwargs": {"action": "store_true", "help": "Clean up stale worker records"},
+                "kwargs": {
+                    "action": "store_true",
+                    "help": "Clean up stale worker records",
+                },
             },
         ],
         category="monitoring",
@@ -281,13 +284,13 @@ async def handle_status_command(args):
     # 3. Worker Summary
     try:
         from fastjob.core.heartbeat import get_worker_status
-        
+
         worker_status = await get_worker_status(pool)
         if "error" not in worker_status:
             status_counts = worker_status.get("status_counts", {})
             active_count = status_counts.get("active", 0)
             stale_count = len(worker_status.get("stale_workers", []))
-            
+
             if active_count > 0 or stale_count > 0:
                 worker_summary = f"{active_count} active"
                 if stale_count > 0:
@@ -403,7 +406,7 @@ async def handle_workers_command(args):
 
     try:
         pool = await get_pool()
-        
+
         # Clean up stale workers if requested
         if args.cleanup:
             print_status("Cleaning up stale worker records...", "info")
@@ -416,9 +419,11 @@ async def handle_workers_command(args):
 
         # Get worker status
         worker_status = await get_worker_status(pool)
-        
+
         if "error" in worker_status:
-            print_status(f"Failed to get worker status: {worker_status['error']}", "error")
+            print_status(
+                f"Failed to get worker status: {worker_status['error']}", "error"
+            )
             return 1
 
         # Display status summary
@@ -427,7 +432,7 @@ async def handle_workers_command(args):
         stopped_count = status_counts.get("stopped", 0)
         total_concurrency = worker_status.get("total_concurrency", 0)
         health = worker_status.get("health", "unknown")
-        
+
         print(f"Health: {health.upper()}")
         print(f"Active Workers: {active_count}")
         print(f"Stopped Workers: {stopped_count}")
@@ -440,14 +445,16 @@ async def handle_workers_command(args):
             for worker in active_workers:
                 uptime = int(worker["uptime_seconds"])
                 uptime_str = f"{uptime//3600}h {(uptime%3600)//60}m {uptime%60}s"
-                queues_str = ", ".join(worker["queues"]) if worker["queues"] else "all queues"
-                
+                queues_str = (
+                    ", ".join(worker["queues"]) if worker["queues"] else "all queues"
+                )
+
                 print(f"  🟢 {worker['hostname']}:{worker['pid']}")
                 print(f"     Queues: {queues_str}")
                 print(f"     Concurrency: {worker['concurrency']}")
                 print(f"     Uptime: {uptime_str}")
                 print(f"     Last Heartbeat: {worker['last_heartbeat']}")
-                
+
                 # Show metadata if available
                 metadata = worker.get("metadata", {})
                 if isinstance(metadata, dict) and metadata:
@@ -464,11 +471,11 @@ async def handle_workers_command(args):
             for worker in stale_workers:
                 stale_time = int(worker["stale_seconds"])
                 stale_str = f"{stale_time//60}m {stale_time%60}s ago"
-                
+
                 print(f"  🔴 {worker['hostname']}:{worker['pid']}")
                 print(f"     Last Heartbeat: {worker['last_heartbeat']} ({stale_str})")
                 print()
-            
+
             if not args.cleanup:
                 print("Use --cleanup to remove stale worker records")
 

@@ -1,7 +1,7 @@
 # FastJob Docker Compose Configuration
 # Production-ready setup with PostgreSQL, worker, and dashboard
 
-version: '3.8'
+version: "3.8"
 
 services:
   # PostgreSQL Database
@@ -43,8 +43,8 @@ services:
       FASTJOB_JOBS_MODULE: myapp.jobs
     volumes:
       - ./logs:/app/logs
-      - ./app:/app/myapp  # Mount your application code
-    command: ["fastjob", "worker", "--concurrency=4"]
+      - ./app:/app/myapp # Mount your application code
+    command: ["fastjob", "start", "--concurrency=4"]
     healthcheck:
       test: ["CMD", "fastjob", "health"]
       interval: 30s
@@ -56,10 +56,10 @@ services:
       resources:
         limits:
           memory: 512M
-          cpus: '1.0'
+          cpus: "1.0"
         reservations:
           memory: 256M
-          cpus: '0.5'
+          cpus: "0.5"
 
   # FastJob Dashboard (Pro/Enterprise)
   fastjob_dashboard:
@@ -92,10 +92,10 @@ services:
       resources:
         limits:
           memory: 256M
-          cpus: '0.5'
+          cpus: "0.5"
         reservations:
           memory: 128M
-          cpus: '0.25'
+          cpus: "0.25"
 
   # Optional: Priority Worker for urgent jobs
   fastjob_priority_worker:
@@ -114,9 +114,9 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp
-    command: ["fastjob", "worker", "--concurrency=2", "--queues=urgent"]
+    command: ["fastjob", "start", "--concurrency=2", "--queues=urgent"]
     profiles:
-      - priority  # Optional service - enable with --profile priority
+      - priority # Optional service - enable with --profile priority
     healthcheck:
       test: ["CMD", "fastjob", "health"]
       interval: 30s
@@ -135,7 +135,7 @@ services:
     ports:
       - "6379:6379"
     profiles:
-      - cache  # Optional service - enable with --profile cache
+      - cache # Optional service - enable with --profile cache
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -159,7 +159,7 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./logs/nginx:/var/log/nginx
     profiles:
-      - proxy  # Optional service - enable with --profile proxy
+      - proxy # Optional service - enable with --profile proxy
     networks:
       - fastjob_network
 

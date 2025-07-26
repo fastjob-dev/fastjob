@@ -77,7 +77,8 @@ class FastJobSettings(BaseSettings):
     )
 
     default_queues: List[str] = Field(
-        default=["default"], description="Default queues to process (when not using dynamic discovery)"
+        default=["default"],
+        description="Default queues to process (when not using dynamic discovery)",
     )
 
     # Job Processing Settings
