@@ -96,7 +96,22 @@ def main():
             "Specification Compliance",
             ["tests/integration/test_specification_compliance.py"],
         ),
-        ("Unit Tests", ["tests/unit/"]),
+        (
+            "Unit Tests - Core Modules",
+            [
+                "tests/unit/test_health.py",
+                "tests/unit/test_errors.py", 
+                "tests/unit/test_hashing.py",
+            ],
+        ),
+        (
+            "Unit Tests - Other",
+            [
+                "tests/unit/test_cli_plugin_system.py",
+                "tests/unit/test_configuration.py",
+                "tests/unit/test_plugin_loading_control.py",
+            ],
+        ),
     ]
 
     # Run each batch
