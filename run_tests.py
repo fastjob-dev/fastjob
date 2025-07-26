@@ -100,7 +100,7 @@ def main():
             "Unit Tests - Core Modules",
             [
                 "tests/unit/test_health.py",
-                "tests/unit/test_errors.py", 
+                "tests/unit/test_errors.py",
                 "tests/unit/test_hashing.py",
             ],
         ),

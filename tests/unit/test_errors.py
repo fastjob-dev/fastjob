@@ -3,7 +3,6 @@ Test suite for errors.py module - comprehensive coverage for FastJob exception h
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 from fastjob.errors import (
     FastJobError,
@@ -130,15 +129,15 @@ class TestDatabaseConnectionError:
         urls_and_expected = [
             (
                 "postgresql://user:password@localhost:5432/db",
-                "postgresql://user:***@localhost:5432/db"
+                "postgresql://user:***@localhost:5432/db",
             ),
             (
                 "postgres://admin:secret123@db.example.com/prod",
-                "postgres://admin:***@db.example.com/prod"
+                "postgres://admin:***@db.example.com/prod",
             ),
             (
                 "postgresql://user@localhost/db",  # No password
-                "postgresql://user@localhost/db"
+                "postgresql://user@localhost/db",
             ),
         ]
 
@@ -175,9 +174,12 @@ class TestJobValidationError:
 
     def test_job_validation_error_basic(self):
         """Test basic job validation error."""
-        validation_errors = ["Missing required field 'email'", "Invalid type for 'count'"]
+        validation_errors = [
+            "Missing required field 'email'",
+            "Invalid type for 'count'",
+        ]
         provided_args = {"name": "test", "count": "invalid"}
-        
+
         error = JobValidationError("send_email", validation_errors, provided_args)
 
         assert error.error_code == "JOB_VALIDATION_FAILED"
@@ -192,7 +194,7 @@ class TestJobValidationError:
         long_value = "x" * 200
         validation_errors = ["Invalid data"]
         provided_args = {"data": long_value}
-        
+
         error = JobValidationError("test_job", validation_errors, provided_args)
 
         # Should be truncated to 100 characters
@@ -206,7 +208,7 @@ class TestJobExecutionError:
     def test_job_execution_error_basic(self):
         """Test basic job execution error."""
         original_error = ValueError("Invalid input")
-        
+
         error = JobExecutionError(
             job_name="process_data",
             job_id="123e4567-e89b-12d3-a456-426614174000",
@@ -228,7 +230,7 @@ class TestJobExecutionError:
         """Test job execution error with job arguments."""
         original_error = RuntimeError("Processing failed")
         args = {"user_id": 123, "data": "test data"}
-        
+
         error = JobExecutionError(
             job_name="test_job",
             job_id="test-id",
@@ -245,7 +247,7 @@ class TestJobExecutionError:
     def test_job_execution_error_retry_message(self):
         """Test retry message for non-final attempts."""
         original_error = Exception("Retry me")
-        
+
         error = JobExecutionError(
             job_name="retry_job",
             job_id="retry-id",
@@ -260,7 +262,7 @@ class TestJobExecutionError:
     def test_job_execution_error_final_attempt(self):
         """Test dead letter message for final attempt."""
         original_error = Exception("Final failure")
-        
+
         error = JobExecutionError(
             job_name="final_job",
             job_id="final-id",
@@ -277,7 +279,7 @@ class TestJobExecutionError:
         original_error = Exception("Error")
         long_data = "x" * 100
         args = {"data": long_data}
-        
+
         error = JobExecutionError(
             job_name="test_job",
             job_id="test-id",
@@ -314,7 +316,7 @@ class TestQueueError:
     def test_queue_error_with_details(self):
         """Test queue error with additional details."""
         details = {"queue_size": 1000, "max_size": 1000}
-        
+
         error = QueueError(
             operation="enqueue",
             queue_name="test_queue",
@@ -345,7 +347,7 @@ class TestWorkerError:
     def test_worker_error_with_config(self):
         """Test worker error with worker configuration."""
         worker_config = {"concurrency": 4, "queues": ["default"]}
-        
+
         error = WorkerError(
             operation="configure",
             reason="Invalid configuration",
@@ -435,7 +437,7 @@ class TestMigrationError:
     def test_migration_error_with_database_info(self):
         """Test migration error with database information."""
         database_info = {"version": "13.2", "encoding": "UTF8"}
-        
+
         error = MigrationError(
             migration_step="add_index",
             reason="Insufficient privileges",
@@ -452,62 +454,65 @@ class TestCreateUserFriendlyError:
     def test_fastjob_error_passthrough(self):
         """Test that FastJobError instances are returned as-is."""
         original_error = JobNotFoundError("test_job")
-        
+
         result = create_user_friendly_error(original_error)
-        
+
         assert result is original_error
 
     def test_database_connection_error_detection(self):
         """Test automatic detection of database connection errors."""
         original_error = Exception("Connection to database failed")
-        
+
         result = create_user_friendly_error(original_error)
-        
+
         assert isinstance(result, DatabaseConnectionError)
 
     def test_pydantic_validation_error_detection(self):
         """Test automatic detection of Pydantic validation errors."""
+
         # Create a custom error class to simulate Pydantic error
         class ValidationError(Exception):
             pass
-        
+
         original_error = ValidationError("Validation failed")
-        
+
         context = {"job_name": "test_job", "args": {"field": "value"}}
         result = create_user_friendly_error(original_error, context)
-        
+
         assert isinstance(result, JobValidationError)
         assert result.context["job_name"] == "test_job"
 
     def test_pydantic_validation_error_by_type_name(self):
         """Test detection by 'pydantic' in error type name."""
+
         class PydanticCustomError(Exception):
             pass
-        
+
         original_error = PydanticCustomError("Pydantic validation failed")
-        
+
         result = create_user_friendly_error(original_error)
-        
+
         assert isinstance(result, JobValidationError)
 
     def test_validation_error_by_type_name(self):
         """Test detection by 'validation' in error type name."""
+
         class CustomValidationError(Exception):
             pass
-        
+
         original_error = CustomValidationError("Custom validation failed")
-        
+
         result = create_user_friendly_error(original_error)
-        
+
         assert isinstance(result, JobValidationError)
 
     def test_generic_error_conversion(self):
         """Test conversion of generic errors to FastJobError."""
         original_error = RuntimeError("Something went wrong")
         context = {"additional": "info"}
-        
+
         result = create_user_friendly_error(original_error, context)
-        
+
         assert isinstance(result, FastJobError)
         assert result.error_code == "UNEXPECTED_ERROR"
         assert "Something went wrong" in result.message
@@ -517,9 +522,9 @@ class TestCreateUserFriendlyError:
     def test_create_user_friendly_error_no_context(self):
         """Test error conversion without context."""
         original_error = ValueError("Invalid value")
-        
+
         result = create_user_friendly_error(original_error)
-        
+
         assert isinstance(result, FastJobError)
         assert result.context["original_error_type"] == "ValueError"
         assert "additional" not in result.context
@@ -541,7 +546,7 @@ class TestErrorInheritance:
             SchedulingError,
             MigrationError,
         ]
-        
+
         for error_class in error_classes:
             assert issubclass(error_class, FastJobError)
             assert issubclass(error_class, Exception)
@@ -568,7 +573,7 @@ class TestErrorEdgeCases:
             context={},
             suggestions=[],
         )
-        
+
         # Should not include empty sections in formatted message
         error_str = str(error)
         assert "Context:" not in error_str
@@ -582,7 +587,7 @@ class TestErrorEdgeCases:
             error_code="TEST",
             context=context,
         )
-        
+
         error_str = str(error)
         assert "key1: None" in error_str
         assert "key2: value" in error_str
@@ -594,19 +599,21 @@ class TestErrorEdgeCases:
             message=long_message,
             error_code="LONG_ERROR",
         )
-        
+
         # Should not crash and should include the full message
         error_str = str(error)
         assert long_message in error_str
 
     def test_special_characters_in_message(self):
         """Test handling of special characters in error messages."""
-        special_message = "Error with 'quotes', \"double quotes\", and \nnewlines\t tabs"
+        special_message = (
+            "Error with 'quotes', \"double quotes\", and \nnewlines\t tabs"
+        )
         error = FastJobError(
             message=special_message,
             error_code="SPECIAL_CHARS",
         )
-        
+
         error_str = str(error)
         assert special_message in error_str
 
@@ -617,7 +624,7 @@ class TestErrorEdgeCases:
             message=unicode_message,
             error_code="UNICODE_ERROR",
         )
-        
+
         error_str = str(error)
         assert unicode_message in error_str
 
@@ -628,7 +635,7 @@ class TestErrorSerialization:
     def test_error_repr(self):
         """Test error __repr__ method."""
         error = FastJobError("Test error", "TEST_CODE")
-        
+
         # Should be able to create repr without errors
         repr_str = repr(error)
         assert "FastJobError" in repr_str
@@ -640,13 +647,13 @@ class TestErrorSerialization:
             "list": [1, 2, 3],
             "tuple": (4, 5, 6),
         }
-        
+
         error = FastJobError(
             message="Complex context",
             error_code="COMPLEX",
             context=complex_context,
         )
-        
+
         # Should handle complex objects in context
         error_str = str(error)
         assert "nested:" in error_str

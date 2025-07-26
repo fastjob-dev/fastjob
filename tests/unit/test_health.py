@@ -4,7 +4,6 @@ Test suite for health.py module - comprehensive coverage for production health m
 
 import asyncio
 import pytest
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastjob.health import (
@@ -29,23 +28,23 @@ from fastjob.health import (
 
 class MockAsyncContextManager:
     """Proper async context manager for mocking."""
-    
+
     def __init__(self, return_value):
         self.return_value = return_value
-    
+
     async def __aenter__(self):
         return self.return_value
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         return None
 
 
 class MockPool:
     """Mock pool that returns proper async context manager."""
-    
+
     def __init__(self, connection_mock):
         self.connection_mock = connection_mock
-    
+
     def acquire(self):
         return MockAsyncContextManager(self.connection_mock)
 
@@ -166,10 +165,11 @@ class TestHealthMonitor:
 
     async def test_run_check_timeout(self, monitor):
         """Test run_check with timeout."""
+
         async def slow_check():
             await asyncio.sleep(10)
             return True
-        
+
         check = HealthCheck("test", slow_check, timeout=0.1)
 
         status, message, duration = await monitor.run_check(check)
@@ -222,7 +222,9 @@ class TestHealthMonitor:
     async def test_check_health_non_critical_failure(self, monitor):
         """Test check_health with non-critical failure."""
         check1 = AsyncMock(return_value=(HealthStatus.HEALTHY, "Check 1 OK"))
-        check2 = AsyncMock(return_value=(HealthStatus.UNHEALTHY, "Non-critical failure"))
+        check2 = AsyncMock(
+            return_value=(HealthStatus.UNHEALTHY, "Non-critical failure")
+        )
 
         monitor.add_check("check1", check1, critical=True)
         monitor.add_check("check2", check2, critical=False)
@@ -268,9 +270,10 @@ class TestHealthMonitor:
 
     async def test_start_stop_monitoring(self, monitor):
         """Test start and stop monitoring."""
+
         async def test_check():
             return (HealthStatus.HEALTHY, "OK")
-        
+
         monitor.add_check("test", test_check)
 
         # Start monitoring
@@ -289,9 +292,10 @@ class TestHealthMonitor:
 
     async def test_start_monitoring_already_running(self, monitor):
         """Test starting monitoring when already running."""
+
         async def test_check():
             return (HealthStatus.HEALTHY, "OK")
-        
+
         monitor.add_check("test", test_check)
 
         await monitor.start_monitoring(interval=0.1)
@@ -322,8 +326,12 @@ class TestHealthCheckFunctions:
         """Test successful database health check."""
         # Mock database connection
         mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [1, 1, 100]  # Basic check, tables exist, job count
-        
+        mock_conn.fetchval.side_effect = [
+            1,
+            1,
+            100,
+        ]  # Basic check, tables exist, job count
+
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
 
@@ -374,7 +382,12 @@ class TestHealthCheckFunctions:
     async def test_check_job_processing_health_stuck_jobs(self, mock_get_pool):
         """Test job processing health with stuck jobs."""
         mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [150, 10, 5, 20]  # stuck, recent, failed, total
+        mock_conn.fetchval.side_effect = [
+            150,
+            10,
+            5,
+            20,
+        ]  # stuck, recent, failed, total
 
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -388,7 +401,12 @@ class TestHealthCheckFunctions:
     async def test_check_job_processing_health_high_failure_rate(self, mock_get_pool):
         """Test job processing health with high failure rate."""
         mock_conn = AsyncMock()
-        mock_conn.fetchval.side_effect = [50, 10, 15, 20]  # stuck, recent, failed, total
+        mock_conn.fetchval.side_effect = [
+            50,
+            10,
+            15,
+            20,
+        ]  # stuck, recent, failed, total
 
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -429,7 +447,12 @@ class TestHealthCheckFunctions:
         mock_psutil.disk_usage.return_value = MagicMock(percent=60.0)
         mock_psutil.cpu_percent.return_value = 30.0
 
-        with patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)):
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *args, **kwargs: (
+                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
+            ),
+        ):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.HEALTHY
@@ -442,7 +465,12 @@ class TestHealthCheckFunctions:
         mock_psutil = MagicMock()
         mock_psutil.virtual_memory.return_value = MagicMock(percent=95.0)
 
-        with patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)):
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *args, **kwargs: (
+                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
+            ),
+        ):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -454,7 +482,12 @@ class TestHealthCheckFunctions:
         mock_psutil.virtual_memory.return_value = MagicMock(percent=50.0)
         mock_psutil.disk_usage.return_value = MagicMock(percent=95.0)
 
-        with patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)):
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *args, **kwargs: (
+                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
+            ),
+        ):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -467,7 +500,12 @@ class TestHealthCheckFunctions:
         mock_psutil.disk_usage.return_value = MagicMock(percent=60.0)
         mock_psutil.cpu_percent.return_value = 98.0
 
-        with patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)):
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *args, **kwargs: (
+                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
+            ),
+        ):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -486,7 +524,12 @@ class TestHealthCheckFunctions:
         mock_psutil = MagicMock()
         mock_psutil.virtual_memory.side_effect = Exception("System error")
 
-        with patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)):
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *args, **kwargs: (
+                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
+            ),
+        ):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.UNHEALTHY
@@ -604,10 +647,12 @@ class TestHealthAPIFunctions:
     async def test_start_stop_health_monitoring_api(self):
         """Test start/stop health monitoring API functions."""
         # Mock the health check functions to avoid actual system checks
-        with patch("fastjob.health.check_database_health") as mock_db, \
-             patch("fastjob.health.check_job_processing_health") as mock_proc, \
-             patch("fastjob.health.check_system_resources") as mock_res:
-            
+        with (
+            patch("fastjob.health.check_database_health") as mock_db,
+            patch("fastjob.health.check_job_processing_health") as mock_proc,
+            patch("fastjob.health.check_system_resources") as mock_res,
+        ):
+
             mock_db.return_value = (HealthStatus.HEALTHY, "DB OK")
             mock_proc.return_value = (HealthStatus.HEALTHY, "Proc OK")
             mock_res.return_value = (HealthStatus.HEALTHY, "Res OK")

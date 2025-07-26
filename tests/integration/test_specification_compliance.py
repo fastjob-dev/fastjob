@@ -272,11 +272,7 @@ async def test_database_schema_compliance():
 @pytest.mark.asyncio
 async def test_project_structure_compliance():
     """Test project structure matches specification"""
-    import os
-
     # Check main directories exist
-    import fastjob
-
     base_path = os.path.dirname(fastjob.__file__)
 
     required_dirs = [
