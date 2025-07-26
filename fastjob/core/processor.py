@@ -47,29 +47,22 @@ async def _move_job_to_dead_letter(
     logger.error(f"Job {job_id} moved to dead letter queue: {error_message}")
 
 
-async def process_jobs(
+async def _fetch_and_lock_job(
     conn: asyncpg.Connection,
-    queue: Optional[Union[str, List[str]]] = "default",
+    queue: Optional[Union[str, List[str]]],
     heartbeat: Optional["WorkerHeartbeat"] = None,
-) -> bool:
+) -> Optional[dict]:
     """
-    Process a single job from the queue(s).
-
-    This function has been refactored to execute jobs OUTSIDE of database transactions
-    to prevent long-running jobs from holding database locks and causing deadlocks.
-
+    Fetch and lock a job from the queue in a transaction.
+    
     Args:
         conn: Database connection
-        queue: Queue specification:
-               - None: Process from any queue (no filtering)
-               - str: Process from single specific queue
-               - List[str]: Process from multiple specific queues efficiently
-
+        queue: Queue specification
+        heartbeat: Optional worker heartbeat for tracking
+        
     Returns:
-        bool: True if a job was processed, False if no jobs available
+        Job record dict or None if no jobs available
     """
-    # Step 1: Fetch and lock a job in a minimal transaction
-    job_record = None
     async with conn.transaction():
         # Ensure timezone is UTC for consistent scheduled job handling
         await conn.execute("SET timezone = 'UTC'")
@@ -116,7 +109,7 @@ async def process_jobs(
                 queue,
             )
         if not job_record:
-            return False
+            return None
 
         # Mark job as processing to prevent other workers from picking it up
         job_id = job_record["id"]
@@ -143,108 +136,94 @@ async def process_jobs(
             """,
                 job_id,
             )
+    
+    return dict(job_record)
 
-    # Step 2: Extract job details (outside transaction)
+
+async def _execute_job_safely(
+    job_record: dict, job_meta: dict
+) -> tuple[bool, Optional[str]]:
+    """
+    Execute a job function safely with proper error handling.
+    
+    Args:
+        job_record: Job record from database
+        job_meta: Job metadata from registry
+        
+    Returns:
+        tuple: (success: bool, error_message: Optional[str])
+    """
     job_id = job_record["id"]
-    job_name = job_record["job_name"]
-    attempts = job_record["attempts"]
     max_attempts = job_record["max_attempts"]
-
+    
     # Parse job arguments with corruption handling
     try:
         args_data = json.loads(job_record["args"])
     except Exception as e:
         # Catch both JSONDecodeError and TypeError broadly for corrupted data
         if "json" in str(type(e)).lower() or isinstance(e, (TypeError, ValueError)):
-            # Corrupted JSON data - move to dead letter immediately
-            logger.error(f"Job {job_id} has corrupted JSON data: {e}")
-            await _move_job_to_dead_letter(
-                conn, job_id, max_attempts, f"Corrupted JSON data: {str(e)}"
-            )
-            return True
+            # This will be handled by the caller
+            raise ValueError(f"Corrupted JSON data: {str(e)}") from e
         else:
             # Other exception types - re-raise
             raise
 
-    # Basic logging
-    start_time = time.time()
-    logger.info(
-        f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
-    )
+    # Validate arguments if model is specified
+    args_model = job_meta.get("args_model")
+    if args_model:
+        try:
+            validated_args = args_model(**args_data).model_dump()
+        except (TypeError, ValueError, AttributeError) as validation_error:
+            # This will be handled by the caller
+            raise ValueError(f"Corrupted argument data: {str(validation_error)}") from validation_error
+    else:
+        validated_args = args_data
 
-    job_meta = get_job(job_name)
-    if not job_meta:
-        await conn.execute(
-            """
-            UPDATE fastjob_jobs
-            SET status = 'dead_letter',
-                attempts = max_attempts,
-                last_error = $1,
-                updated_at = NOW()
-            WHERE id = $2
-        """,
-            f"Job {job_name} not registered.",
-            job_id,
-        )
-        logger.error(f"Job {job_name} not registered - moved to dead letter queue")
-        return True
-
-    # Step 3: Execute the job function OUTSIDE of any transaction
-    job_success = False
-    job_error = None
-
+    # Execute the job function (outside transaction)
     try:
-        # Validate arguments if model is specified
-        args_model = job_meta.get("args_model")
-        if args_model:
-            try:
-                validated_args = args_model(**args_data).model_dump()
-            except (TypeError, ValueError, AttributeError) as validation_error:
-                # Argument validation failed - data structure is corrupted
-                logger.error(
-                    f"Job {job_id} has corrupted argument data: {validation_error}"
-                )
-                await _move_job_to_dead_letter(
-                    conn,
-                    job_id,
-                    max_attempts,
-                    f"Corrupted argument data: {str(validation_error)}",
-                )
-                return True
-        else:
-            validated_args = args_data
-
-        # Execute the job function (outside transaction)
         try:
             await job_meta["func"](**validated_args)
-            job_success = True
+            return True, None
         except (TypeError, AttributeError) as func_error:
             # Function signature mismatch or corrupted arguments
             if (
                 "argument" in str(func_error).lower()
                 or "parameter" in str(func_error).lower()
             ):
-                logger.error(f"Job {job_id} has argument mismatch: {func_error}")
-                await _move_job_to_dead_letter(
-                    conn,
-                    job_id,
-                    max_attempts,
-                    f"Function argument mismatch: {str(func_error)}",
-                )
-                return True
+                # This will be handled by the caller
+                raise ValueError(f"Function argument mismatch: {str(func_error)}") from func_error
             else:
                 # Regular TypeError/AttributeError from job logic - should retry
                 raise
 
     except Exception as e:
-        job_error = str(e)
-        logger.exception(f"Job {job_id} execution failed")
+        # Regular job execution error (not corruption)
+        return False, str(e)
 
-    # Step 4: Update job status based on execution result in a separate transaction
-    duration_ms = round((time.time() - start_time) * 1000, 2)
 
+async def _update_job_status(
+    conn: asyncpg.Connection,
+    job_record: dict,
+    success: bool,
+    error_message: Optional[str],
+    duration_ms: float,
+) -> None:
+    """
+    Update job status in database based on execution result.
+    
+    Args:
+        conn: Database connection
+        job_record: Original job record
+        success: Whether job execution succeeded
+        error_message: Error message if job failed
+        duration_ms: Job execution duration in milliseconds
+    """
+    job_id = job_record["id"]
+    attempts = job_record["attempts"]
+    max_attempts = job_record["max_attempts"]
+    
     async with conn.transaction():
-        if job_success:
+        if success:
             # Handle job result TTL setting
             from fastjob.settings import get_settings
 
@@ -293,7 +272,7 @@ async def process_jobs(
                     WHERE id = $3
                 """,
                     new_attempts,
-                    f"Max retries exceeded: {job_error}",
+                    f"Max retries exceeded: {error_message}",
                     job_id,
                 )
                 logger.error(
@@ -311,12 +290,83 @@ async def process_jobs(
                     WHERE id = $3
                 """,
                     new_attempts,
-                    job_error,
+                    error_message,
                     job_id,
                 )
                 logger.warning(
                     f"Job {job_id} will be retried (attempt {new_attempts} failed)"
                 )
+
+
+async def process_jobs(
+    conn: asyncpg.Connection,
+    queue: Optional[Union[str, List[str]]] = "default",
+    heartbeat: Optional["WorkerHeartbeat"] = None,
+) -> bool:
+    """
+    Process a single job from the queue(s).
+
+    This function has been refactored to execute jobs OUTSIDE of database transactions
+    to prevent long-running jobs from holding database locks and causing deadlocks.
+
+    Args:
+        conn: Database connection
+        queue: Queue specification:
+               - None: Process from any queue (no filtering)
+               - str: Process from single specific queue
+               - List[str]: Process from multiple specific queues efficiently
+
+    Returns:
+        bool: True if a job was processed, False if no jobs available
+    """
+    # Step 1: Fetch and lock a job in a minimal transaction
+    job_record = await _fetch_and_lock_job(conn, queue, heartbeat)
+    if not job_record:
+        return False
+
+    # Step 2: Extract job details
+    job_id = job_record["id"]
+    job_name = job_record["job_name"]
+    attempts = job_record["attempts"]
+    max_attempts = job_record["max_attempts"]
+
+    # Basic logging
+    start_time = time.time()
+    logger.info(
+        f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
+    )
+
+    job_meta = get_job(job_name)
+    if not job_meta:
+        await conn.execute(
+            """
+            UPDATE fastjob_jobs
+            SET status = 'dead_letter',
+                attempts = max_attempts,
+                last_error = $1,
+                updated_at = NOW()
+            WHERE id = $2
+        """,
+            f"Job {job_name} not registered.",
+            job_id,
+        )
+        logger.error(f"Job {job_name} not registered - moved to dead letter queue")
+        return True
+
+    # Step 3: Execute the job function OUTSIDE of any transaction
+    try:
+        job_success, job_error = await _execute_job_safely(job_record, job_meta)
+    except ValueError as corruption_error:
+        # Handle corruption errors - move to dead letter immediately
+        logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
+        await _move_job_to_dead_letter(
+            conn, job_id, max_attempts, str(corruption_error)
+        )
+        return True
+
+    # Step 4: Update job status based on execution result
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+    await _update_job_status(conn, job_record, job_success, job_error, duration_ms)
 
     return True
 

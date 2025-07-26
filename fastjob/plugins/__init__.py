@@ -11,9 +11,6 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Global plugin registry
-_plugins: Dict[str, Any] = {}
-_plugin_hooks: Dict[str, List[Any]] = {}
 
 
 class PluginManager:
