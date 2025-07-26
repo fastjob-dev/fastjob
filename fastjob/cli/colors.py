@@ -3,95 +3,95 @@ CLI Color and Styling Utilities
 Provides colored output and terminal styling for FastJob CLI commands.
 """
 
-import sys
 import os
+import sys
 from typing import Optional
 
 
 class Colors:
     """ANSI color codes for terminal output."""
-    
-    # Reset
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    
+
+    # Rese
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+
     # Colors
-    BLACK = '\033[30m'
-    RED = '\033[31m'
-    GREEN = '\033[32m'
-    YELLOW = '\033[33m'
-    BLUE = '\033[34m'
-    MAGENTA = '\033[35m'
-    CYAN = '\033[36m'
-    WHITE = '\033[37m'
-    
+    BLACK = "\033[30m"
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[34m"
+    MAGENTA = "\033[35m"
+    CYAN = "\033[36m"
+    WHITE = "\033[37m"
+
     # Bright colors
-    BRIGHT_BLACK = '\033[90m'
-    BRIGHT_RED = '\033[91m'
-    BRIGHT_GREEN = '\033[92m'
-    BRIGHT_YELLOW = '\033[93m'
-    BRIGHT_BLUE = '\033[94m'
-    BRIGHT_MAGENTA = '\033[95m'
-    BRIGHT_CYAN = '\033[96m'
-    BRIGHT_WHITE = '\033[97m'
-    
+    BRIGHT_BLACK = "\033[90m"
+    BRIGHT_RED = "\033[91m"
+    BRIGHT_GREEN = "\033[92m"
+    BRIGHT_YELLOW = "\033[93m"
+    BRIGHT_BLUE = "\033[94m"
+    BRIGHT_MAGENTA = "\033[95m"
+    BRIGHT_CYAN = "\033[96m"
+    BRIGHT_WHITE = "\033[97m"
+
     # Background colors
-    BG_RED = '\033[41m'
-    BG_GREEN = '\033[42m'
-    BG_YELLOW = '\033[43m'
-    BG_BLUE = '\033[44m'
+    BG_RED = "\033[41m"
+    BG_GREEN = "\033[42m"
+    BG_YELLOW = "\033[43m"
+    BG_BLUE = "\033[44m"
 
 
 def supports_color() -> bool:
     """
     Check if the terminal supports color output.
-    
+
     Returns:
         True if color is supported, False otherwise
     """
-    # Check if NO_COLOR environment variable is set
-    if os.environ.get('NO_COLOR'):
+    # Check if NO_COLOR environment variable is se
+    if os.environ.get("NO_COLOR"):
         return False
-    
-    # Check if FORCE_COLOR is set
-    if os.environ.get('FORCE_COLOR'):
+
+    # Check if FORCE_COLOR is se
+    if os.environ.get("FORCE_COLOR"):
         return True
-    
+
     # Check if output is a TTY
-    if not hasattr(sys.stdout, 'isatty'):
+    if not hasattr(sys.stdout, "isatty"):
         return False
-    
+
     if not sys.stdout.isatty():
         return False
-    
+
     # Check TERM environment variable
-    term = os.environ.get('TERM', '').lower()
-    if term in ('dumb', 'unknown'):
+    term = os.environ.get("TERM", "").lower()
+    if term in ("dumb", "unknown"):
         return False
-    
+
     return True
 
 
 def colorize(text: str, color: str, bold: bool = False) -> str:
     """
     Colorize text if color is supported.
-    
+
     Args:
         text: Text to colorize
         color: Color code from Colors class
         bold: Whether to make text bold
-        
+
     Returns:
         Colorized text or plain text if color not supported
     """
     if not supports_color():
         return text
-    
+
     prefix = color
     if bold:
         prefix = Colors.BOLD + color
-    
+
     return f"{prefix}{text}{Colors.RESET}"
 
 
@@ -136,32 +136,32 @@ def bold(text: str) -> str:
 
 class StatusIcon:
     """Status icons for CLI output."""
-    
+
     @staticmethod
     def success() -> str:
         """Success icon."""
         return success("✓", bold=True) if supports_color() else "[OK]"
-    
+
     @staticmethod
     def error() -> str:
         """Error icon."""
         return error("✗", bold=True) if supports_color() else "[ERROR]"
-    
+
     @staticmethod
     def warning() -> str:
         """Warning icon."""
         return warning("⚠", bold=True) if supports_color() else "[WARNING]"
-    
+
     @staticmethod
     def info() -> str:
         """Info icon."""
         return info("ℹ", bold=True) if supports_color() else "[INFO]"
-    
+
     @staticmethod
     def loading() -> str:
         """Loading icon."""
         return highlight("⏳", bold=True) if supports_color() else "[LOADING]"
-    
+
     @staticmethod
     def rocket() -> str:
         """Rocket icon."""
@@ -193,34 +193,34 @@ def print_section(title: str):
 def print_status(message: str, status: str = "info", prefix: str = ""):
     """
     Print a status message with appropriate styling.
-    
+
     Args:
-        message: Message to print
+        message: Message to prin
         status: Status type (success, error, warning, info)
-        prefix: Optional prefix text
+        prefix: Optional prefix tex
     """
     icon_map = {
         "success": StatusIcon.success(),
         "error": StatusIcon.error(),
         "warning": StatusIcon.warning(),
         "info": StatusIcon.info(),
-        "loading": StatusIcon.loading()
+        "loading": StatusIcon.loading(),
     }
-    
+
     icon = icon_map.get(status, StatusIcon.info())
-    
+
     if prefix:
         prefix_text = dim(f"[{prefix}] ")
     else:
         prefix_text = ""
-    
+
     print(f"{prefix_text}{icon} {message}")
 
 
 def print_table(headers: list, rows: list, max_width: int = 100):
     """
     Print a simple table with proper alignment.
-    
+
     Args:
         headers: List of column headers
         rows: List of row data (list of lists)
@@ -229,7 +229,7 @@ def print_table(headers: list, rows: list, max_width: int = 100):
     if not rows:
         print(dim("No data to display"))
         return
-    
+
     # Calculate column widths
     col_widths = []
     for i, header in enumerate(headers):
@@ -238,35 +238,39 @@ def print_table(headers: list, rows: list, max_width: int = 100):
             if i < len(row):
                 max_width_col = max(max_width_col, len(str(row[i])))
         col_widths.append(min(max_width_col, max_width // len(headers)))
-    
+
     # Print header
-    header_row = " | ".join(header.ljust(col_widths[i])[:col_widths[i]] for i, header in enumerate(headers))
+    header_row = " | ".join(
+        header.ljust(col_widths[i])[: col_widths[i]] for i, header in enumerate(headers)
+    )
     if supports_color():
         print(f"{Colors.BOLD}{header_row}{Colors.RESET}")
         print(f"{Colors.DIM}{'-' * len(header_row)}{Colors.RESET}")
     else:
         print(header_row)
-        print('-' * len(header_row))
-    
+        print("-" * len(header_row))
+
     # Print rows
     for row in rows:
         row_data = []
         for i, cell in enumerate(row):
             if i < len(col_widths):
-                cell_str = str(cell).ljust(col_widths[i])[:col_widths[i]]
+                cell_str = str(cell).ljust(col_widths[i])[: col_widths[i]]
                 row_data.append(cell_str)
         print(" | ".join(row_data))
 
 
-def print_progress_bar(current: int, total: int, width: int = 50, prefix: str = "Progress"):
+def print_progress_bar(
+    current: int, total: int, width: int = 50, prefix: str = "Progress"
+):
     """
     Print a progress bar.
-    
+
     Args:
         current: Current progress value
         total: Total progress value
         width: Width of progress bar
-        prefix: Prefix text
+        prefix: Prefix tex
     """
     if total == 0:
         percentage = 100
@@ -274,26 +278,34 @@ def print_progress_bar(current: int, total: int, width: int = 50, prefix: str = 
     else:
         percentage = min(100, (current / total) * 100)
         filled_width = int(width * current / total)
-    
+
     if supports_color():
         bar = f"{Colors.GREEN}{'█' * filled_width}{Colors.DIM}{'░' * (width - filled_width)}{Colors.RESET}"
-        print(f"\r{prefix}: {bar} {percentage:.1f}% ({current}/{total})", end="", flush=True)
+        print(
+            f"\r{prefix}: {bar} {percentage:.1f}% ({current}/{total})",
+            end="",
+            flush=True,
+        )
     else:
         bar = f"{'#' * filled_width}{'-' * (width - filled_width)}"
-        print(f"\r{prefix}: [{bar}] {percentage:.1f}% ({current}/{total})", end="", flush=True)
+        print(
+            f"\r{prefix}: [{bar}] {percentage:.1f}% ({current}/{total})",
+            end="",
+            flush=True,
+        )
 
 
 def print_key_value(key: str, value: str, indent: int = 0):
     """
     Print a key-value pair with styling.
-    
+
     Args:
-        key: Key text
-        value: Value text  
+        key: Key tex
+        value: Value tex
         indent: Indentation level
     """
     indent_str = "  " * indent
-    
+
     if supports_color():
         print(f"{indent_str}{Colors.CYAN}{key}:{Colors.RESET} {value}")
     else:
@@ -303,14 +315,14 @@ def print_key_value(key: str, value: str, indent: int = 0):
 def print_list(items: list, bullet: str = "•", indent: int = 0):
     """
     Print a styled list.
-    
+
     Args:
-        items: List items to print
+        items: List items to prin
         bullet: Bullet character
         indent: Indentation level
     """
     indent_str = "  " * indent
-    
+
     for item in items:
         if supports_color():
             print(f"{indent_str}{Colors.DIM}{bullet}{Colors.RESET} {item}")
@@ -321,42 +333,42 @@ def print_list(items: list, bullet: str = "•", indent: int = 0):
 def confirm(message: str, default: bool = False) -> bool:
     """
     Show a confirmation prompt with styling.
-    
+
     Args:
         message: Confirmation message
         default: Default value if user just presses enter
-        
+
     Returns:
         True if confirmed, False otherwise
     """
     suffix = " [Y/n]" if default else " [y/N]"
-    
+
     if supports_color():
         prompt = f"{Colors.YELLOW}?{Colors.RESET} {message}{dim(suffix)}: "
     else:
         prompt = f"? {message}{suffix}: "
-    
+
     try:
         response = input(prompt).strip().lower()
-        
+
         if not response:
             return default
-        
-        return response in ('y', 'yes', 'true', '1')
-        
+
+        return response in ("y", "yes", "true", "1")
+
     except (KeyboardInterrupt, EOFError):
-        print()  # New line after interrupt
+        print()  # New line after interrup
         return False
 
 
 def prompt(message: str, default: Optional[str] = None) -> str:
     """
     Show an input prompt with styling.
-    
+
     Args:
         message: Prompt message
         default: Default value if user just presses enter
-        
+
     Returns:
         User input or default value
     """
@@ -364,16 +376,16 @@ def prompt(message: str, default: Optional[str] = None) -> str:
         suffix = f" ({dim(default)})"
     else:
         suffix = ""
-    
+
     if supports_color():
         prompt_text = f"{Colors.BLUE}?{Colors.RESET} {message}{suffix}: "
     else:
         prompt_text = f"? {message}{suffix}: "
-    
+
     try:
         response = input(prompt_text).strip()
         return response if response else (default or "")
-        
+
     except (KeyboardInterrupt, EOFError):
-        print()  # New line after interrupt
+        print()  # New line after interrup
         return default or ""

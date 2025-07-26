@@ -29,7 +29,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4.0", "pytest-asyncio>=0.21.0"]
+dev = [
+  "pytest>=7.4.0", 
+  "pytest-asyncio>=0.21.0",
+  "black>=23.0.0",
+  "flake8>=6.0.0",
+  "isort>=5.12.0",
+]
 
 [project.scripts]
 fastjob = "fastjob.cli.main:main"
@@ -40,4 +46,35 @@ exclude = ["tests*", "jobs*", "deployment*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.black]
+# Standard Black configuration
+line-length = 88
+target-version = ['py310', 'py311', 'py312', 'py313']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+# Make isort compatible with Black
+profile = "black"
+multi_line_output = 3
+line_length = 88
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
 

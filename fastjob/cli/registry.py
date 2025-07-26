@@ -5,16 +5,15 @@ Provides a clean command registration system that allows plugins
 and core components to register commands dynamically.
 """
 
-from typing import Dict, Callable, Optional, Any, List
-import argparse
 import logging
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class CLICommand:
     """Represents a single CLI command."""
-    
+
     def __init__(
         self,
         name: str,
@@ -23,7 +22,7 @@ class CLICommand:
         handler: Callable,
         arguments: Optional[List[Dict[str, Any]]] = None,
         aliases: Optional[List[str]] = None,
-        category: str = "core"
+        category: str = "core",
     ):
         self.name = name
         self.help = help
@@ -32,7 +31,7 @@ class CLICommand:
         self.arguments = arguments or []
         self.aliases = aliases or []
         self.category = category
-    
+
     def add_to_parser(self, subparsers):
         """Add this command to an argparse subparsers object."""
         # Create the main parser
@@ -40,42 +39,46 @@ class CLICommand:
             self.name,
             help=self.help,
             description=self.description,
-            aliases=self.aliases
+            aliases=self.aliases,
         )
-        
+
         # Add arguments
         for arg_config in self.arguments:
             args = arg_config.get("args", [])
             kwargs = arg_config.get("kwargs", {})
             parser.add_argument(*args, **kwargs)
-        
+
         # Set the handler
         parser.set_defaults(func=self.handler)
-        
+
         return parser
 
 
 class CLIRegistry:
     """Registry for CLI commands with categorization and priority."""
-    
+
     def __init__(self):
         self.commands: Dict[str, CLICommand] = {}
         self.categories: Dict[str, List[str]] = {}
-    
+
     def register_command(self, command: CLICommand):
         """Register a command in the registry."""
         if command.name in self.commands:
-            logger.warning(f"Command '{command.name}' is already registered. Overriding.")
-        
+            logger.warning(
+                f"Command '{command.name}' is already registered. Overriding."
+            )
+
         self.commands[command.name] = command
-        
+
         # Add to category
         if command.category not in self.categories:
             self.categories[command.category] = []
         self.categories[command.category].append(command.name)
-        
-        logger.debug(f"Registered CLI command: {command.name} (category: {command.category})")
-    
+
+        logger.debug(
+            f"Registered CLI command: {command.name} (category: {command.category})"
+        )
+
     def register_simple_command(
         self,
         name: str,
@@ -84,7 +87,7 @@ class CLIRegistry:
         description: Optional[str] = None,
         arguments: Optional[List[Dict[str, Any]]] = None,
         aliases: Optional[List[str]] = None,
-        category: str = "core"
+        category: str = "core",
     ):
         """Helper method to register a command with minimal setup."""
         command = CLICommand(
@@ -94,27 +97,27 @@ class CLIRegistry:
             handler=handler,
             arguments=arguments,
             aliases=aliases,
-            category=category
+            category=category,
         )
         self.register_command(command)
-    
+
     def get_command(self, name: str) -> Optional[CLICommand]:
         """Get a command by name."""
         return self.commands.get(name)
-    
+
     def get_commands_by_category(self, category: str) -> List[CLICommand]:
         """Get all commands in a specific category."""
         command_names = self.categories.get(category, [])
         return [self.commands[name] for name in command_names if name in self.commands]
-    
+
     def get_all_commands(self) -> List[CLICommand]:
         """Get all registered commands."""
         return list(self.commands.values())
-    
+
     def get_categories(self) -> List[str]:
         """Get all available categories."""
         return list(self.categories.keys())
-    
+
     def add_to_parser(self, subparsers):
         """Add all registered commands to a subparsers object."""
         for command in self.commands.values():
@@ -122,16 +125,16 @@ class CLIRegistry:
                 command.add_to_parser(subparsers)
             except Exception as e:
                 logger.error(f"Failed to add command '{command.name}' to parser: {e}")
-    
+
     def get_registry_status(self) -> Dict[str, Any]:
         """Get status information about the command registry."""
         return {
             "total_commands": len(self.commands),
             "categories": {
-                category: len(commands) 
+                category: len(commands)
                 for category, commands in self.categories.items()
             },
-            "command_names": list(self.commands.keys())
+            "command_names": list(self.commands.keys()),
         }
 
 
@@ -156,7 +159,7 @@ def register_simple_command(
     description: Optional[str] = None,
     arguments: Optional[List[Dict[str, Any]]] = None,
     aliases: Optional[List[str]] = None,
-    category: str = "core"
+    category: str = "core",
 ):
     """Helper to register a simple command in the global registry."""
     _registry.register_simple_command(

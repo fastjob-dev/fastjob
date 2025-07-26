@@ -142,7 +142,7 @@ async def test_malformed_job_data():
 @pytest.mark.asyncio
 async def test_concurrent_job_processing():
     """Test concurrent processing of jobs by multiple workers"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -217,7 +217,7 @@ async def test_database_connection_failures():
 @pytest.mark.asyncio
 async def test_job_argument_validation_edge_cases():
     """Test complex argument validation scenarios"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -327,7 +327,7 @@ async def test_exception_handling_in_jobs():
 @pytest.mark.asyncio
 async def test_large_job_payloads():
     """Test handling of jobs with large argument payloads"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -373,7 +373,7 @@ async def test_large_job_payloads():
 @pytest.mark.asyncio
 async def test_worker_shutdown_handling():
     """Test graceful worker shutdown"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -557,6 +557,7 @@ async def test_environment_variable_handling():
 
         # Should handle missing FASTJOB_DATABASE_URL gracefully
         from fastjob.settings import get_settings
+
         settings = get_settings()
 
         assert (
@@ -571,13 +572,11 @@ async def test_environment_variable_handling():
 
         # Reload settings to pick up new environment
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Verify settings were picked up
-        assert (
-            settings.database_url
-            == "postgresql://test@localhost/test_db"
-        )
+        assert settings.database_url == "postgresql://test@localhost/test_db"
 
     finally:
         # Restore original environment

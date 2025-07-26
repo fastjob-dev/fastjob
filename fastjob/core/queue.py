@@ -6,9 +6,10 @@ The goal is to make it feel natural and reliable for developers.
 """
 
 import json
+import time
 import uuid
-from typing import Callable, Any, Optional, Dict, List, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic import ValidationError
 
@@ -44,8 +45,9 @@ async def enqueue(
     """
     # Ensure plugins are loaded automatically
     from fastjob import _ensure_plugins_loaded
+
     _ensure_plugins_loaded()
-    
+
     job_name = f"{job_func.__module__}.{job_func.__name__}"
     job_meta = get_job(job_name)
     if not job_meta:
@@ -68,12 +70,10 @@ async def enqueue(
     if scheduled_at:
         if scheduled_at.tzinfo is not None:
             # Convert timezone-aware datetime to UTC
-            from datetime import timezone
             scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
         else:
             # For timezone-naive datetime, assume it's in local time and convert to UTC
             # Get the local timezone offset and apply it to get UTC
-            import time
             # Get timezone offset in seconds (accounts for DST)
             is_dst = time.daylight and time.localtime().tm_isdst
             offset_seconds = time.altzone if is_dst else time.timezone
@@ -84,7 +84,7 @@ async def enqueue(
 
     job_id = str(uuid.uuid4())
     pool = await get_pool()
-    
+
     # Compute deterministic args hash for reliable uniqueness
     args_json = json.dumps(kwargs)
     args_hash = compute_args_hash(kwargs) if final_unique else None
@@ -92,12 +92,12 @@ async def enqueue(
     async with pool.acquire() as conn:
         # Ensure timezone is UTC for consistent scheduled job handling
         await conn.execute("SET timezone = 'UTC'")
-        
+
         # For unique jobs, check if we already have this exact job queued using args_hash
         if final_unique:
             existing_job = await conn.fetchrow(
                 """
-                SELECT id FROM fastjob_jobs 
+                SELECT id FROM fastjob_jobs
                 WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
             """,
                 job_name,
@@ -119,7 +119,8 @@ async def enqueue(
                 job_name,
                 args_json,
                 args_hash,
-                job_meta["retries"] + 1,  # max_attempts = retries + 1 (original attempt + retries)
+                job_meta["retries"]
+                + 1,  # max_attempts = retries + 1 (original attempt + retries)
                 final_priority,
                 final_queue,
                 final_unique,
@@ -138,7 +139,7 @@ async def enqueue(
                 # Let's find the job that beat us to it using args_hash
                 existing_job = await conn.fetchrow(
                     """
-                    SELECT id FROM fastjob_jobs 
+                    SELECT id FROM fastjob_jobs
                     WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
                 """,
                     job_name,
@@ -172,10 +173,10 @@ async def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, job_name, args, status, attempts, max_attempts, 
-                   queue, priority, scheduled_at, last_error, 
+            SELECT id, job_name, args, status, attempts, max_attempts,
+                   queue, priority, scheduled_at, last_error,
                    created_at, updated_at
-            FROM fastjob_jobs 
+            FROM fastjob_jobs
             WHERE id = $1
         """,
             uuid.UUID(job_id),
@@ -221,7 +222,7 @@ async def cancel_job(job_id: str) -> bool:
         # Only allow cancelling queued jobs
         result = await conn.execute(
             """
-            UPDATE fastjob_jobs 
+            UPDATE fastjob_jobs
             SET status = 'cancelled', updated_at = NOW()
             WHERE id = $1 AND status = 'queued'
         """,
@@ -248,7 +249,7 @@ async def retry_job(job_id: str) -> bool:
         # Only allow retrying failed or dead letter jobs
         result = await conn.execute(
             """
-            UPDATE fastjob_jobs 
+            UPDATE fastjob_jobs
             SET status = 'queued', attempts = 0, last_error = NULL, updated_at = NOW()
             WHERE id = $1 AND status IN ('failed', 'dead_letter')
         """,
@@ -329,10 +330,10 @@ async def list_jobs(
     params.append(offset)
 
     query = f"""
-        SELECT id, job_name, args, status, attempts, max_attempts, 
-               queue, priority, scheduled_at, last_error, 
+        SELECT id, job_name, args, status, attempts, max_attempts,
+               queue, priority, scheduled_at, last_error,
                created_at, updated_at
-        FROM fastjob_jobs 
+        FROM fastjob_jobs
         {where_clause}
         ORDER BY created_at DESC
         LIMIT {limit_param} OFFSET {offset_param}
@@ -374,7 +375,7 @@ async def get_queue_stats() -> List[Dict[str, Any]]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT 
+            SELECT
                 queue,
                 COUNT(*) as total_jobs,
                 COUNT(*) FILTER (WHERE status = 'queued') as queued,
@@ -382,7 +383,7 @@ async def get_queue_stats() -> List[Dict[str, Any]]:
                 COUNT(*) FILTER (WHERE status = 'failed') as failed,
                 COUNT(*) FILTER (WHERE status = 'dead_letter') as dead_letter,
                 COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
-            FROM fastjob_jobs 
+            FROM fastjob_jobs
             GROUP BY queue
             ORDER BY queue
         """
@@ -435,7 +436,7 @@ async def schedule(
 
         # Schedule in 2 hours using timedelta (positional)
         await schedule(my_job, timedelta(hours=2))
-        
+
         # Using keyword arguments
         await schedule(my_job, run_at=datetime(2025, 1, 15, 9, 0))
         await schedule(my_job, run_in=30)
@@ -444,7 +445,7 @@ async def schedule(
     if when is not None:
         if run_at is not None or run_in is not None:
             raise ValueError("Cannot use 'when' parameter with 'run_at' or 'run_in'")
-        
+
         if isinstance(when, datetime):
             scheduled_time = when
         elif isinstance(when, (int, float)):
@@ -452,7 +453,9 @@ async def schedule(
         elif isinstance(when, timedelta):
             scheduled_time = datetime.now() + when
         else:
-            raise ValueError(f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float")
+            raise ValueError(
+                f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float"
+            )
     else:
         # Use keyword arguments
         if run_at is not None and run_in is not None:

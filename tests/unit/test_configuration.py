@@ -29,23 +29,24 @@ class TestPydanticConfiguration:
         # Store original environment
         self.original_env = {}
         for key in os.environ:
-            if key.startswith('FASTJOB_'):
+            if key.startswith("FASTJOB_"):
                 self.original_env[key] = os.environ[key]
 
         # Clear FastJob environment variables for clean testing
         for key in list(os.environ.keys()):
-            if key.startswith('FASTJOB_'):
+            if key.startswith("FASTJOB_"):
                 del os.environ[key]
 
         # Clear settings cache
         import fastjob.settings
+
         fastjob.settings._settings = None
 
     def teardown_method(self):
         """Clean up after each test."""
         # Restore original environment
         for key in list(os.environ.keys()):
-            if key.startswith('FASTJOB_'):
+            if key.startswith("FASTJOB_"):
                 del os.environ[key]
 
         for key, value in self.original_env.items():
@@ -53,6 +54,7 @@ class TestPydanticConfiguration:
 
         # Clear settings cache
         import fastjob.settings
+
         fastjob.settings._settings = None
 
     def test_default_configuration_loading(self):
@@ -96,6 +98,7 @@ class TestPydanticConfiguration:
         os.environ["FASTJOB_ENVIRONMENT"] = "development"
 
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Test overridden values
@@ -121,7 +124,10 @@ class TestPydanticConfiguration:
         from fastjob.settings import get_settings
 
         # Should raise validation error for non-PostgreSQL URL
-        with pytest.raises(ValueError, match=r"(?s)Invalid FastJob configuration.*database_url must be a PostgreSQL connection string"):
+        with pytest.raises(
+            ValueError,
+            match=r"(?s)Invalid FastJob configuration.*database_url must be a PostgreSQL connection string",
+        ):
             get_settings(reload=True)
 
     def test_configuration_validation_invalid_log_level(self):
@@ -131,7 +137,10 @@ class TestPydanticConfiguration:
         from fastjob.settings import get_settings
 
         # Should raise validation error for invalid log level
-        with pytest.raises(ValueError, match=r"(?s)Invalid FastJob configuration.*log_level must be one of"):
+        with pytest.raises(
+            ValueError,
+            match=r"(?s)Invalid FastJob configuration.*log_level must be one of",
+        ):
             get_settings(reload=True)
 
     def test_configuration_validation_invalid_log_format(self):
@@ -141,7 +150,10 @@ class TestPydanticConfiguration:
         from fastjob.settings import get_settings
 
         # Should raise validation error for invalid log format
-        with pytest.raises(ValueError, match=r"(?s)Invalid FastJob configuration.*log_format must be one of"):
+        with pytest.raises(
+            ValueError,
+            match=r"(?s)Invalid FastJob configuration.*log_format must be one of",
+        ):
             get_settings(reload=True)
 
     def test_configuration_validation_numeric_ranges(self):
@@ -164,26 +176,35 @@ class TestPydanticConfiguration:
     def test_database_url_is_not_used_as_fallback(self):
         """Test that DATABASE_URL is NOT used as fallback - only FASTJOB_DATABASE_URL."""
         # Set DATABASE_URL but not FASTJOB_DATABASE_URL
-        os.environ["DATABASE_URL"] = "postgresql://should_not_be_used@localhost/legacy_db"
+        os.environ["DATABASE_URL"] = (
+            "postgresql://should_not_be_used@localhost/legacy_db"
+        )
 
         # Remove FASTJOB_DATABASE_URL if it exists
         if "FASTJOB_DATABASE_URL" in os.environ:
             del os.environ["FASTJOB_DATABASE_URL"]
 
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Should use default value, NOT the DATABASE_URL fallback
         assert settings.database_url == "postgresql://postgres@localhost/postgres"
-        assert settings.database_url != "postgresql://should_not_be_used@localhost/legacy_db"
+        assert (
+            settings.database_url
+            != "postgresql://should_not_be_used@localhost/legacy_db"
+        )
 
     def test_fastjob_database_url_is_used_when_set(self):
         """Test that FASTJOB_DATABASE_URL is properly used when set."""
         # Set both DATABASE_URL and FASTJOB_DATABASE_URL
         os.environ["DATABASE_URL"] = "postgresql://ignored@localhost/ignored_db"
-        os.environ["FASTJOB_DATABASE_URL"] = "postgresql://fastjob_user@localhost/fastjob_db"
+        os.environ["FASTJOB_DATABASE_URL"] = (
+            "postgresql://fastjob_user@localhost/fastjob_db"
+        )
 
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Only FASTJOB_DATABASE_URL should be used (DATABASE_URL ignored)
@@ -192,7 +213,7 @@ class TestPydanticConfiguration:
     def test_configuration_file_loading(self):
         """Test configuration file loading functionality."""
         # Create temporary config file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
             f.write("FASTJOB_DATABASE_URL=postgresql://config@localhost/config_db\n")
             f.write("FASTJOB_JOBS_MODULE=config.jobs\n")
             f.write("FASTJOB_DEFAULT_CONCURRENCY=12\n")
@@ -201,6 +222,7 @@ class TestPydanticConfiguration:
 
         try:
             from fastjob.settings import get_settings
+
             settings = get_settings(config_file=config_file, reload=True)
 
             # Should load from config file
@@ -231,11 +253,14 @@ class TestPydanticConfiguration:
         os.environ["FASTJOB_DATABASE_URL"] = "postgresql://initial@localhost/initial_db"
 
         from fastjob.settings import get_settings
+
         settings1 = get_settings(reload=True)
         assert settings1.database_url == "postgresql://initial@localhost/initial_db"
 
         # Change environment and reload
-        os.environ["FASTJOB_DATABASE_URL"] = "postgresql://reloaded@localhost/reloaded_db"
+        os.environ["FASTJOB_DATABASE_URL"] = (
+            "postgresql://reloaded@localhost/reloaded_db"
+        )
         settings2 = get_settings(reload=True)
 
         # Should get new settings
@@ -260,11 +285,14 @@ class TestPydanticConfiguration:
 
     def test_settings_access_via_get_settings(self):
         """Test that settings are accessed via get_settings() function."""
-        os.environ["FASTJOB_DATABASE_URL"] = "postgresql://export_test@localhost/export_db"
+        os.environ["FASTJOB_DATABASE_URL"] = (
+            "postgresql://export_test@localhost/export_db"
+        )
         os.environ["FASTJOB_JOBS_MODULE"] = "export.jobs"
 
         # Reload settings to pick up environment variables
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Settings should be accessible via the settings object
@@ -274,11 +302,18 @@ class TestPydanticConfiguration:
     def test_case_insensitive_configuration(self):
         """Test case-insensitive configuration handling."""
         # Set case variations
-        os.environ["fastjob_database_url"] = "postgresql://case@localhost/case_db"  # lowercase
-        os.environ["FASTJOB_LOG_LEVEL"] = "debug"  # lowercase value should be normalized
-        os.environ["FASTJOB_LOG_FORMAT"] = "STRUCTURED"  # uppercase value should be normalized
+        os.environ["fastjob_database_url"] = (
+            "postgresql://case@localhost/case_db"  # lowercase
+        )
+        os.environ["FASTJOB_LOG_LEVEL"] = (
+            "debug"  # lowercase value should be normalized
+        )
+        os.environ["FASTJOB_LOG_FORMAT"] = (
+            "STRUCTURED"  # uppercase value should be normalized
+        )
 
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Should handle case variations properly
@@ -291,6 +326,7 @@ class TestPydanticConfiguration:
         os.environ["FASTJOB_DEFAULT_QUEUES"] = "high,normal,low,bulk"
 
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Should parse comma-separated values into list
@@ -315,9 +351,12 @@ class TestPydanticConfiguration:
             os.environ["FASTJOB_DEBUG"] = env_value
 
             from fastjob.settings import get_settings
+
             settings = get_settings(reload=True)
 
-            assert settings.debug == expected, f"Failed for env_value='{env_value}', expected={expected}, got={settings.debug}"
+            assert (
+                settings.debug == expected
+            ), f"Failed for env_value='{env_value}', expected={expected}, got={settings.debug}"
 
     def test_numeric_configuration_validation(self):
         """Test numeric configuration validation and type conversion."""
@@ -326,6 +365,7 @@ class TestPydanticConfiguration:
         os.environ["FASTJOB_JOB_TIMEOUT"] = "600.0"
 
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Should properly convert string values to correct types
@@ -342,6 +382,7 @@ class TestPydanticConfiguration:
         os.environ["FASTJOB_JOB_TIMEOUT"] = "0"
 
         from fastjob.settings import get_settings
+
         settings = get_settings(reload=True)
 
         # Zero timeout should be converted to None in fallback mode
