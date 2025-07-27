@@ -422,12 +422,7 @@ class TestHealthCheckFunctions:
         mock_psutil.disk_usage.return_value = MagicMock(percent=60.0)
         mock_psutil.cpu_percent.return_value = 30.0
 
-        with patch(
-            "builtins.__import__",
-            side_effect=lambda name, *args, **kwargs: (
-                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
-            ),
-        ):
+        with patch.dict('sys.modules', {'psutil': mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.HEALTHY
@@ -440,12 +435,7 @@ class TestHealthCheckFunctions:
         mock_psutil = MagicMock()
         mock_psutil.virtual_memory.return_value = MagicMock(percent=95.0)
 
-        with patch(
-            "builtins.__import__",
-            side_effect=lambda name, *args, **kwargs: (
-                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
-            ),
-        ):
+        with patch.dict('sys.modules', {'psutil': mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -457,12 +447,7 @@ class TestHealthCheckFunctions:
         mock_psutil.virtual_memory.return_value = MagicMock(percent=50.0)
         mock_psutil.disk_usage.return_value = MagicMock(percent=95.0)
 
-        with patch(
-            "builtins.__import__",
-            side_effect=lambda name, *args, **kwargs: (
-                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
-            ),
-        ):
+        with patch.dict('sys.modules', {'psutil': mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -475,12 +460,7 @@ class TestHealthCheckFunctions:
         mock_psutil.disk_usage.return_value = MagicMock(percent=60.0)
         mock_psutil.cpu_percent.return_value = 98.0
 
-        with patch(
-            "builtins.__import__",
-            side_effect=lambda name, *args, **kwargs: (
-                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
-            ),
-        ):
+        with patch.dict('sys.modules', {'psutil': mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -499,12 +479,7 @@ class TestHealthCheckFunctions:
         mock_psutil = MagicMock()
         mock_psutil.virtual_memory.side_effect = Exception("System error")
 
-        with patch(
-            "builtins.__import__",
-            side_effect=lambda name, *args, **kwargs: (
-                mock_psutil if name == "psutil" else __import__(name, *args, **kwargs)
-            ),
-        ):
+        with patch.dict('sys.modules', {'psutil': mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.UNHEALTHY

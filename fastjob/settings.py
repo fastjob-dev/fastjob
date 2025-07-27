@@ -108,6 +108,123 @@ class FastJobSettings(BaseSettings):
         default=None, ge=1.0, description="Default job execution timeout in seconds"
     )
 
+    # Worker Processing Intervals
+    cleanup_interval: float = Field(
+        default=300.0,
+        ge=10.0,
+        le=3600.0,
+        description="Interval for cleaning up expired jobs and stale workers (seconds)",
+    )
+
+    stale_worker_threshold: float = Field(
+        default=300.0,
+        ge=60.0,
+        le=7200.0,
+        description="Time after which workers are considered stale (seconds)",
+    )
+
+    notification_timeout: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=60.0,
+        description="Timeout when waiting for job notifications (seconds)",
+    )
+
+    error_retry_delay: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=300.0,
+        description="Delay before retrying after worker errors (seconds)",
+    )
+
+    # Embedded Worker Settings
+    embedded_poll_interval: float = Field(
+        default=0.5,
+        ge=0.1,
+        le=10.0,
+        description="Polling interval for embedded worker (seconds)",
+    )
+
+    embedded_error_timeout: float = Field(
+        default=2.0,
+        ge=0.1,
+        le=60.0,
+        description="Error retry timeout for embedded worker (seconds)",
+    )
+
+    embedded_shutdown_timeout: float = Field(
+        default=5.0,
+        ge=1.0,
+        le=300.0,
+        description="Graceful shutdown timeout for embedded worker (seconds)",
+    )
+
+    # Health Monitoring Settings
+    health_check_timeout: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=60.0,
+        description="Default timeout for health checks (seconds)",
+    )
+
+    health_monitoring_interval: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=3600.0,
+        description="Interval for health monitoring loops (seconds)",
+    )
+
+    health_error_retry_delay: float = Field(
+        default=5.0,
+        ge=0.1,
+        le=300.0,
+        description="Delay before retrying health checks after errors (seconds)",
+    )
+
+    # Health Check Thresholds
+    stuck_jobs_threshold: int = Field(
+        default=100,
+        ge=1,
+        le=10000,
+        description="Number of stuck jobs that triggers health warning",
+    )
+
+    job_failure_rate_threshold: float = Field(
+        default=50.0,
+        ge=0.0,
+        le=100.0,
+        description="Job failure rate percentage that triggers health degradation",
+    )
+
+    memory_usage_threshold: float = Field(
+        default=90.0,
+        ge=50.0,
+        le=99.0,
+        description="Memory usage percentage that triggers health warning",
+    )
+
+    disk_usage_threshold: float = Field(
+        default=90.0,
+        ge=50.0,
+        le=99.0,
+        description="Disk usage percentage that triggers health warning",
+    )
+
+    cpu_usage_threshold: float = Field(
+        default=95.0,
+        ge=50.0,
+        le=99.0,
+        description="CPU usage percentage that triggers health warning",
+    )
+
+    # CLI and Display Settings
+    default_job_display_limit: int = Field(
+        default=10,
+        ge=1,
+        le=1000,
+        description="Default number of jobs to display in CLI commands",
+    )
+
     @field_validator("job_timeout", mode="before")
     @classmethod
     def parse_job_timeout(cls, v):

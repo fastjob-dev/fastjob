@@ -32,7 +32,7 @@ _shutdown_event: Optional[asyncio.Event] = None
 async def _run_embedded_worker_loop(
     concurrency: int = 1,
     run_once: bool = False,
-    poll_interval: float = 0.5,
+    poll_interval: Optional[float] = None,
     queues: list = None,
 ):
     """
@@ -44,6 +44,10 @@ async def _run_embedded_worker_loop(
         poll_interval: How often to check for new jobs in seconds (default: 0.5)
         queues: List of queues to process (default: None = all queues)
     """
+    if poll_interval is None:
+        from fastjob.settings import get_settings
+        poll_interval = get_settings().embedded_poll_interval
+        
     global _shutdown_event
     _shutdown_event = asyncio.Event()
 

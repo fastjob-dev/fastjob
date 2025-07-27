@@ -31,6 +31,10 @@ from fastjob.db.connection import get_pool
 
 # Set up test environment
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
+# Optimize configuration for fast testing
+os.environ["FASTJOB_NOTIFICATION_TIMEOUT"] = "1.0"  # Faster notifications for testing
+os.environ["FASTJOB_CLEANUP_INTERVAL"] = "60.0"     # Less frequent cleanup
+os.environ["FASTJOB_WORKER_HEARTBEAT_INTERVAL"] = "2.0"  # Shorter heartbeat for tests
 
 # Test job definitions with timing measurement - using module-level storage that gets cleared
 processed_jobs: List[Dict[str, Any]] = []

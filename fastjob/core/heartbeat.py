@@ -150,8 +150,9 @@ class WorkerHeartbeat:
                 break
             except Exception as e:
                 logger.warning(f"Heartbeat failed: {e}")
+                from fastjob.settings import get_settings
                 await asyncio.sleep(
-                    min(interval, 30)
+                    min(interval, get_settings().stale_worker_threshold / 10)
                 )  # Backoff but don't wait too long
 
     async def _send_heartbeat(self) -> None:
@@ -209,7 +210,7 @@ class WorkerHeartbeat:
 
 
 async def cleanup_stale_workers(
-    pool: asyncpg.Pool, stale_threshold_seconds: int = 300
+    pool: asyncpg.Pool, stale_threshold_seconds: Optional[float] = None
 ) -> int:
     """
     Clean up workers that haven't sent heartbeats within the threshold.
@@ -221,6 +222,10 @@ async def cleanup_stale_workers(
     Returns:
         Number of stale workers cleaned up
     """
+    if stale_threshold_seconds is None:
+        from fastjob.settings import get_settings
+        stale_threshold_seconds = get_settings().stale_worker_threshold
+        
     try:
         async with pool.acquire() as conn:
             # Mark stale workers as stopped

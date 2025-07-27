@@ -436,7 +436,8 @@ async def run_worker(
 
                     # Track last cleanup time for periodic cleanup
                     last_cleanup = 0
-                    cleanup_interval = 300  # 5 minutes
+                    from fastjob.settings import get_settings
+                    cleanup_interval = get_settings().cleanup_interval
 
                     while True:
                         try:
@@ -475,9 +476,9 @@ async def run_worker(
                                                     f"Cleaned up {cleaned_count} expired jobs"
                                                 )
 
-                                        # Clean up stale workers (no heartbeat in 5+ minutes)
+                                        # Clean up stale workers
                                         stale_workers = await cleanup_stale_workers(
-                                            pool, stale_threshold_seconds=300
+                                            pool, stale_threshold_seconds=get_settings().stale_worker_threshold
                                         )
 
                                         last_cleanup = current_time
@@ -492,9 +493,9 @@ async def run_worker(
                             if not any_processed:
                                 # No jobs available, wait for NOTIFY with timeout
                                 try:
-                                    # Wait for notification with 5 second timeoaut
+                                    # Wait for notification with configurable timeout
                                     await asyncio.wait_for(
-                                        notification_event.wait(), timeout=5.0
+                                        notification_event.wait(), timeout=get_settings().notification_timeout
                                     )
                                     notification_event.clear()  # Reset for next notification
                                     logger.debug("Received job notification")
@@ -508,7 +509,7 @@ async def run_worker(
                         except Exception as e:
                             logger.exception(f"Worker error: {e}")
                             await asyncio.sleep(
-                                5
+                                get_settings().error_retry_delay
                             )  # Error occurred, wait before retrying
 
                 finally:

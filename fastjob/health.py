@@ -29,15 +29,18 @@ class HealthCheck:
         self,
         name: str,
         check_func: callable,
-        timeout: float = 5.0,
+        timeout: Optional[float] = None,
         critical: bool = True,
-        interval: float = 30.0,
+        interval: Optional[float] = None,
     ):
+        from fastjob.settings import get_settings
+        settings = get_settings()
+        
         self.name = name
         self.check_func = check_func
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else settings.health_check_timeout
         self.critical = critical
-        self.interval = interval
+        self.interval = interval if interval is not None else settings.health_monitoring_interval
         self.last_check = None
         self.last_status = HealthStatus.UNKNOWN
         self.last_message = "Not checked yet"
@@ -57,9 +60,9 @@ class HealthMonitor:
         self,
         name: str,
         check_func: callable,
-        timeout: float = 5.0,
+        timeout: Optional[float] = None,
         critical: bool = True,
-        interval: float = 30.0,
+        interval: Optional[float] = None,
     ):
         """Add a health check."""
         self.checks[name] = HealthCheck(
@@ -175,10 +178,14 @@ class HealthMonitor:
             "checks": check_results,
         }
 
-    async def start_monitoring(self, interval: float = 30.0):
+    async def start_monitoring(self, interval: Optional[float] = None):
         """Start continuous health monitoring."""
         if self._monitoring:
             return
+
+        if interval is None:
+            from fastjob.settings import get_settings
+            interval = get_settings().health_monitoring_interval
 
         self._monitoring = True
         self.logger.info("Starting health monitoring")
@@ -190,7 +197,8 @@ class HealthMonitor:
                     await asyncio.sleep(interval)
                 except Exception as e:
                     self.logger.error(f"Health monitoring error: {e}")
-                    await asyncio.sleep(5)  # Short retry interval on error
+                    from fastjob.settings import get_settings
+                    await asyncio.sleep(get_settings().health_error_retry_delay)  # Short retry interval on error
 
         self._monitor_task = asyncio.create_task(monitor_loop())
 
@@ -265,7 +273,10 @@ async def check_job_processing_health() -> Tuple[HealthStatus, str]:
         """
         )
 
-        if stuck_jobs > 100:
+        from fastjob.settings import get_settings
+        settings = get_settings()
+        
+        if stuck_jobs > settings.stuck_jobs_threshold:
             return HealthStatus.DEGRADED, f"{stuck_jobs} jobs may be stuck in queue"
 
         # Check for recent processing activity
@@ -294,7 +305,7 @@ async def check_job_processing_health() -> Tuple[HealthStatus, str]:
 
         if total_recent_jobs > 0:
             failure_rate = (failed_jobs / total_recent_jobs) * 100
-            if failure_rate > 50:
+            if failure_rate > settings.job_failure_rate_threshold:
                 return (
                     HealthStatus.DEGRADED,
                     f"High failure rate: {failure_rate:.1f}%",
@@ -311,22 +322,25 @@ async def check_job_processing_health() -> Tuple[HealthStatus, str]:
 
 async def check_system_resources() -> Tuple[HealthStatus, str]:
     """Check system resource usage."""
+    from fastjob.settings import get_settings
+    settings = get_settings()
+    
     try:
         import psutil
 
         # Check memory usage
         memory = psutil.virtual_memory()
-        if memory.percent > 90:
+        if memory.percent > settings.memory_usage_threshold:
             return HealthStatus.DEGRADED, f"High memory usage: {memory.percent:.1f}%"
 
         # Check disk usage
         disk = psutil.disk_usage("/")
-        if disk.percent > 90:
+        if disk.percent > settings.disk_usage_threshold:
             return HealthStatus.DEGRADED, f"High disk usage: {disk.percent:.1f}%"
 
         # Check CPU usage (average over 1 second)
         cpu_percent = psutil.cpu_percent(interval=1)
-        if cpu_percent > 95:
+        if cpu_percent > settings.cpu_usage_threshold:
             return HealthStatus.DEGRADED, f"High CPU usage: {cpu_percent:.1f}%"
 
         return (
@@ -342,28 +356,31 @@ async def check_system_resources() -> Tuple[HealthStatus, str]:
 
 def setup_default_health_checks():
     """Set up default health checks for FastJob."""
+    from fastjob.settings import get_settings
+    settings = get_settings()
+    
     _health_monitor.add_check(
         name="database",
         check_func=check_database_health,
-        timeout=5.0,
+        timeout=settings.health_check_timeout,
         critical=True,
-        interval=30.0,
+        interval=settings.health_monitoring_interval,
     )
 
     _health_monitor.add_check(
         name="job_processing",
         check_func=check_job_processing_health,
-        timeout=10.0,
+        timeout=settings.health_check_timeout * 2,  # Longer timeout for job processing check
         critical=False,
-        interval=60.0,
+        interval=settings.health_monitoring_interval * 2,  # Less frequent for non-critical check
     )
 
     _health_monitor.add_check(
         name="system_resources",
         check_func=check_system_resources,
-        timeout=3.0,
+        timeout=settings.health_check_timeout * 0.6,  # Shorter timeout for resource check
         critical=False,
-        interval=30.0,
+        interval=settings.health_monitoring_interval,
     )
 
 
@@ -424,9 +441,9 @@ async def is_ready() -> bool:
 def add_health_check(
     name: str,
     check_func: callable,
-    timeout: float = 5.0,
+    timeout: Optional[float] = None,
     critical: bool = True,
-    interval: float = 30.0,
+    interval: Optional[float] = None,
 ):
     """
     Add a custom health check.
@@ -441,7 +458,7 @@ def add_health_check(
     _health_monitor.add_check(name, check_func, timeout, critical, interval)
 
 
-async def start_health_monitoring(interval: float = 30.0):
+async def start_health_monitoring(interval: Optional[float] = None):
     """Start continuous health monitoring."""
     if not _health_monitor.checks:
         setup_default_health_checks()

@@ -97,6 +97,10 @@ def main():
             ["tests/integration/test_specification_compliance.py"],
         ),
         (
+            "Error Handling Edge Cases",
+            ["tests/integration/test_error_handling_edge_cases.py"],
+        ),
+        (
             "Unit Tests - Core Modules",
             [
                 "tests/unit/test_health.py",
