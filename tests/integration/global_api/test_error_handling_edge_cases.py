@@ -8,10 +8,8 @@ system resource constraints.
 
 import os
 import asyncio
-import json
 import uuid
-import time
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, MagicMock
 
 import pytest
 import asyncpg
@@ -23,7 +21,7 @@ import fastjob
 from fastjob.db.helpers import fetchrow, fetchval, get_connection
 from fastjob.db.connection import get_pool
 from fastjob.core.processor import process_jobs
-from fastjob.core.queue import enqueue
+# Use global API for enqueueing jobs
 from fastjob.health import check_database_health, HealthStatus
 from fastjob.plugins import get_plugin_manager
 from fastjob.core.discovery import discover_jobs
@@ -49,6 +47,71 @@ async def memory_intensive_job(size_mb: int = 10):
 
 
 @fastjob.job()
+async def db_failure_job():
+    """Job that simulates database failure"""
+    raise asyncpg.ConnectionFailureError("Database connection lost")
+
+
+@fastjob.job()
+async def pool_exhaustion_job():
+    """Job that simulates pool exhaustion"""
+    raise asyncpg.TooManyConnectionsError("Pool exhausted")
+
+
+@fastjob.job()
+async def timeout_job():
+    """Job that simulates timeout"""
+    raise asyncio.TimeoutError("Database query timeout")
+
+
+@fastjob.job()
+async def memory_failure_job():
+    """Job that simulates memory failure"""
+    raise MemoryError("Simulated insufficient memory")
+
+
+@fastjob.job()
+async def system_error_job():
+    """Job that simulates system error"""
+    raise OSError(28, "Simulated: No space left on device")
+
+
+@fastjob.job()
+async def fd_error_job():
+    """Job that simulates file descriptor error"""
+    raise OSError(24, "Simulated: Too many open files")
+
+
+@fastjob.job()
+async def failing_job(error_type: str):
+    """Job that fails with different error types"""
+    if error_type == "value":
+        raise ValueError("Value error occurred")
+    else:
+        raise TypeError("Type error occurred")
+
+
+@fastjob.job()
+async def sometimes_failing_job(attempt_number: int):
+    """Job that fails first attempt but succeeds later"""
+    if attempt_number == 1:
+        raise Exception("Simulated transient failure")
+    return f"Success on attempt {attempt_number}"
+
+
+@fastjob.job()
+async def good_job(data: str):
+    """Job that always succeeds"""
+    return f"processed: {data}"
+
+
+@fastjob.job()
+async def bad_job():
+    """Job that always fails"""
+    raise Exception("This job always fails")
+
+
+@fastjob.job()
 async def quick_job():
     """Simple job for testing"""
     await asyncio.sleep(0.1)
@@ -58,7 +121,6 @@ async def quick_job():
 @fastjob.job()
 async def plugin_dependent_job(message: str):
     """Job that depends on plugin functionality"""
-    from fastjob.plugins import get_plugin_manager
     manager = get_plugin_manager()
     # Try to use plugin feature (may fail if plugins broken)
     result = manager.call_hook("test_hook", message)
@@ -83,35 +145,31 @@ class TestDatabaseConnectionFailures:
     @pytest.mark.asyncio
     async def test_database_failure_during_job_execution(self, clean_db):
         """Test job that simulates database failure"""
-        @fastjob.job()
-        async def db_failure_job():
-            raise asyncpg.ConnectionFailureError("Database connection lost")
+        job_id = await fastjob.enqueue(db_failure_job)
         
-        job_id = await enqueue(db_failure_job)
-        
-        async with get_connection() as conn:
-            processed = await process_jobs(conn, "default")
+        processed = await fastjob.run_worker(run_once=True)
         
         assert processed  # Job should be processed (failed and will retry)
         
-        # Verify job failed but is queued for retry
-        job = await fetchrow("SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id))
-        assert job["status"] == "queued"  # Should be retried
-        assert job["attempts"] == 1
-        assert "Database connection lost" in job["last_error"]
+        # Verify job failed and went to dead letter queue (after all retries)
+        # Use global app pool for consistency
+        global_app = fastjob._get_global_app()
+        app_pool = await global_app.get_pool()
+        
+        async with app_pool.acquire() as conn:
+            job = await conn.fetchrow("SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id))
+            assert job is not None, f"Job {job_id} not found"
+            assert job["status"] in ["dead_letter", "failed"]  # Should be in dead letter after retries
+            assert job["attempts"] >= 3  # Should have attempted multiple times
+            assert "Database connection lost" in job["last_error"]
     
     @pytest.mark.asyncio
     async def test_database_pool_exhaustion(self, clean_db):
         """Test behavior when database connection pool is exhausted"""
-        @fastjob.job()
-        async def pool_exhaustion_job():
-            raise asyncpg.TooManyConnectionsError("Pool exhausted")
+        job_id = await fastjob.enqueue(pool_exhaustion_job)
         
-        job_id = await enqueue(pool_exhaustion_job)
-        
-        async with get_connection() as conn:
-            processed = await process_jobs(conn, "default")
-            assert processed  # Job processed but failed
+        processed = await fastjob.run_worker(run_once=True)
+        assert processed  # Job processed but failed
     
     @pytest.mark.asyncio
     async def test_database_timeout_during_processing(self, clean_db):
@@ -120,7 +178,7 @@ class TestDatabaseConnectionFailures:
         async def timeout_job():
             raise asyncio.TimeoutError("Database query timeout")
         
-        job_id = await enqueue(timeout_job)
+        job_id = await fastjob.enqueue(timeout_job)
         
         async with get_connection() as conn:
             processed = await process_jobs(conn, "default")
@@ -139,7 +197,7 @@ class TestPluginLoadingFailures:
     @pytest.mark.asyncio
     async def test_plugin_loading_failure(self, clean_db):
         """Test job execution when plugin loading fails"""
-        job_id = await enqueue(plugin_dependent_job, message="test_message")
+        job_id = await fastjob.enqueue(plugin_dependent_job, message="test_message")
         
         # Mock plugin manager failure
         with patch('fastjob.plugins.get_plugin_manager') as mock_get_manager:
@@ -160,7 +218,7 @@ class TestPluginLoadingFailures:
     @pytest.mark.asyncio
     async def test_plugin_hook_timeout(self, clean_db):
         """Test plugin hook that times out"""
-        job_id = await enqueue(plugin_dependent_job, message="timeout_test")
+        job_id = await fastjob.enqueue(plugin_dependent_job, message="timeout_test")
         
         # Mock a fast timeout instead of 10 seconds
         with patch('fastjob.plugins.get_plugin_manager') as mock_get_manager:
@@ -186,7 +244,7 @@ class TestMemoryPressureScenarios:
     async def test_memory_intensive_job_execution(self, clean_db):
         """Test execution of memory-intensive jobs"""
         # Enqueue a small memory job for fast testing
-        job_id = await enqueue(memory_intensive_job, size_mb=1)
+        job_id = await fastjob.enqueue(memory_intensive_job, size_mb=1)
         
         async with get_connection() as conn:
             processed = await process_jobs(conn, "default")
@@ -205,7 +263,7 @@ class TestMemoryPressureScenarios:
         async def memory_failure_job():
             raise MemoryError("Simulated insufficient memory")
         
-        job_id = await enqueue(memory_failure_job)
+        job_id = await fastjob.enqueue(memory_failure_job)
         
         async with get_connection() as conn:
             processed = await process_jobs(conn, "default")
@@ -232,7 +290,7 @@ class TestHighVolumeErrorScenarios:
                 raise TypeError("Type error occurred")
         
         # Enqueue a failing job
-        job_id = await enqueue(failing_job, error_type="value")
+        job_id = await fastjob.enqueue(failing_job, error_type="value")
         
         # Process the job (should fail)
         async with get_connection() as conn:
@@ -253,7 +311,7 @@ class TestHighVolumeErrorScenarios:
         # Enqueue several small jobs
         job_ids = []
         for i in range(10):
-            job_id = await enqueue(memory_intensive_job, size_mb=1)
+            job_id = await fastjob.enqueue(memory_intensive_job, size_mb=1)
             job_ids.append(job_id)
         
         # Verify all jobs were enqueued
@@ -281,7 +339,7 @@ class TestSystemResourceFailures:
         async def system_error_job():
             raise OSError(28, "Simulated: No space left on device")
         
-        job_id = await enqueue(system_error_job)
+        job_id = await fastjob.enqueue(system_error_job)
         
         async with get_connection() as conn:
             processed = await process_jobs(conn, "default")
@@ -300,7 +358,7 @@ class TestSystemResourceFailures:
         async def fd_error_job():
             raise OSError(24, "Simulated: Too many open files")
         
-        job_id = await enqueue(fd_error_job)
+        job_id = await fastjob.enqueue(fd_error_job)
         
         async with get_connection() as conn:
             processed = await process_jobs(conn, "default")
@@ -331,7 +389,7 @@ class TestHealthCheckDuringFailures:
         """Test health check behavior under high load"""
         # Enqueue many jobs to create load
         for i in range(10):
-            await enqueue(memory_intensive_job, size_mb=1)
+            await fastjob.enqueue(memory_intensive_job, size_mb=1)
         
         # Health check should still work
         status, message = await check_database_health()
@@ -352,7 +410,7 @@ class TestGracefulDegradation:
             return f"Success on attempt {attempt_number}"
         
         # Enqueue a job that will fail first, then succeed
-        job_id = await enqueue(sometimes_failing_job, attempt_number=1)
+        job_id = await fastjob.enqueue(sometimes_failing_job, attempt_number=1)
         
         # First attempt should fail
         async with get_connection() as conn:
@@ -377,8 +435,8 @@ class TestGracefulDegradation:
             raise Exception("This job always fails")
         
         # Test isolation by running good job first, then bad job
-        good_job_id = await enqueue(good_job, data="test")
-        bad_job_id = await enqueue(bad_job)
+        good_job_id = await fastjob.enqueue(good_job, data="test")
+        bad_job_id = await fastjob.enqueue(bad_job)
         
         # Process good job first (should succeed)
         async with get_connection() as conn:

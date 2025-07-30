@@ -176,6 +176,82 @@ async def startup():
 
 Same code, different worker setup.
 
+## API Patterns: Global vs Instance-Based
+
+FastJob offers two API patterns for different needs:
+
+### Global API (Recommended for most applications)
+
+Perfect for single-database applications with simple configuration needs:
+
+```python
+import fastjob
+
+# Configure once at startup
+fastjob.configure(database_url="postgresql://localhost/myapp")
+
+# Define jobs anywhere in your app
+@fastjob.job(retries=3)
+async def send_email(to: str, subject: str):
+    # Your email logic
+    pass
+
+# Enqueue from anywhere
+await fastjob.enqueue(send_email, to="user@example.com", subject="Welcome!")
+
+# Start worker
+await fastjob.run_worker()  # Or use CLI: fastjob start
+```
+
+### Instance-Based API (Advanced use cases)
+
+For multi-tenant applications, multiple databases, or fine-grained control:
+
+```python
+from fastjob import FastJob
+
+# Create separate instances for different databases/tenants
+app1 = FastJob(database_url="postgresql://localhost/tenant1")
+app2 = FastJob(database_url="postgresql://localhost/tenant2")
+
+# Each instance has its own job registry
+@app1.job(retries=3)
+async def tenant1_job(data: str):
+    return f"Tenant 1: {data}"
+
+@app2.job(retries=2)
+async def tenant2_job(data: str):
+    return f"Tenant 2: {data}"
+
+# Enqueue to specific instances
+await app1.enqueue(tenant1_job, data="message")
+await app2.enqueue(tenant2_job, data="message")
+
+# Run workers for specific instances
+await app1.run_worker(concurrency=2)
+await app2.run_worker(concurrency=4)
+
+# Clean shutdown
+await app1.close()
+await app2.close()
+```
+
+### When to use which pattern
+
+**Use Global API when:**
+- Single database application
+- Simple configuration needs
+- Getting started with FastJob
+- Following typical web framework patterns
+
+**Use Instance-Based API when:**
+- Multi-tenant applications with separate databases
+- Need multiple isolated job systems
+- Fine-grained control over configuration
+- Building FastJob-based libraries or frameworks
+
+Both patterns can coexist in the same application if needed.
+
 ## More features
 
 **Type validation:** Use Pydantic models to validate job arguments automatically
@@ -509,11 +585,22 @@ await fastjob.enqueue(process_data, data={"key": "value"})
 
 ### FastAPI (recommended)
 
+**Global API approach:**
+
 ```python
 from fastapi import FastAPI
 import fastjob
 
 app = FastAPI()
+
+# Configure FastJob once at startup
+@app.on_event("startup")
+async def startup():
+    fastjob.configure(database_url="postgresql://localhost/myapp")
+    
+    # Optional: Start embedded worker for development
+    if fastjob.is_dev_mode():
+        await fastjob.start_embedded_worker()
 
 @fastjob.job()
 async def process_upload(file_id: int):
@@ -524,24 +611,72 @@ async def process_upload(file_id: int):
 async def upload_file(file_id: int):
     await fastjob.enqueue(process_upload, file_id=file_id)
     return {"status": "processing"}
+```
 
-@app.on_event("startup")
-async def startup():
-    if fastjob.is_dev_mode():
-        fastjob.start_embedded_worker()
+**Instance-based approach (multi-tenant):**
+
+```python
+from fastapi import FastAPI, Depends
+from fastjob import FastJob
+
+app = FastAPI()
+
+# Create tenant-specific FastJob instances
+tenant_jobs = {}
+
+async def get_tenant_fastjob(tenant_id: str) -> FastJob:
+    if tenant_id not in tenant_jobs:
+        tenant_jobs[tenant_id] = FastJob(
+            database_url=f"postgresql://localhost/tenant_{tenant_id}"
+        )
+    return tenant_jobs[tenant_id]
+
+@app.post("/upload/{tenant_id}")
+async def upload_file(
+    tenant_id: str, 
+    file_id: int,
+    fastjob_app: FastJob = Depends(get_tenant_fastjob)
+):
+    # Define job inline or use tenant-specific registry
+    @fastjob_app.job()
+    async def process_upload(file_id: int):
+        # Tenant-specific processing logic
+        pass
+    
+    await fastjob_app.enqueue(process_upload, file_id=file_id)
+    return {"status": "processing", "tenant": tenant_id}
+
+@app.on_event("shutdown")
+async def shutdown():
+    # Clean shutdown for all tenant instances
+    for fastjob_app in tenant_jobs.values():
+        await fastjob_app.close()
 ```
 
 ### Django
 
+**Global API approach:**
+
 ```python
-# In Django, use async views with FastJob
-from django.http import JsonResponse
+# settings.py - Configure FastJob
+import fastjob
+
+fastjob.configure(
+    database_url="postgresql://localhost/django_app"
+)
+
+# jobs.py - Define your jobs
 import fastjob
 
 @fastjob.job()
 async def send_notification(user_id: int):
     # Send notification logic
     pass
+
+# views.py - Use in views
+from django.http import JsonResponse
+from .jobs import send_notification
+import fastjob
 
 async def trigger_notification(request):
     user_id = request.POST.get('user_id')
@@ -551,12 +686,19 @@ async def trigger_notification(request):
 
 ### Flask
 
+**Global API approach:**
+
 ```python
 from flask import Flask
 import fastjob
 import asyncio
 
 app = Flask(__name__)
+
+# Configure FastJob at app startup
+@app.before_first_request
+def configure_fastjob():
+    fastjob.configure(database_url="postgresql://localhost/flask_app")
 
 @fastjob.job()
 async def background_task(data: str):
@@ -567,6 +709,38 @@ async def background_task(data: str):
 def trigger():
     # Use asyncio.run for sync Flask integration
     asyncio.run(fastjob.enqueue(background_task, data="test"))
+    return {"status": "queued"}
+```
+
+**Instance-based approach:**
+
+```python
+from flask import Flask, g
+from fastjob import FastJob
+import asyncio
+
+app = Flask(__name__)
+
+def get_fastjob():
+    if 'fastjob' not in g:
+        g.fastjob = FastJob(database_url="postgresql://localhost/flask_app")
+    return g.fastjob
+
+@app.teardown_appcontext
+def close_fastjob(error):
+    fastjob_app = g.pop('fastjob', None)
+    if fastjob_app is not None:
+        asyncio.run(fastjob_app.close())
+
+@app.route('/trigger')
+def trigger():
+    fastjob_app = get_fastjob()
+    
+    @fastjob_app.job()
+    async def background_task(data: str):
+        return f"Processed: {data}"
+    
+    asyncio.run(fastjob_app.enqueue(background_task, data="test"))
     return {"status": "queued"}
 ```
 

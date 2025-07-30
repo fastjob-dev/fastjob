@@ -10,7 +10,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
-from .db.connection import get_pool
 
 
 class HealthStatus(Enum):

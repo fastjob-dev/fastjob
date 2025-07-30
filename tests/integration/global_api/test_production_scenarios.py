@@ -17,14 +17,13 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 
-from fastjob import job, enqueue
-from fastjob.core.processor import process_jobs
+import fastjob
 from fastjob.db.connection import DatabaseContext
 from fastjob.settings import get_settings
 
 
 # Test job functions
-@job(unique=False)  # Ensure multiple instances can be enqueued
+@fastjob.job(unique=False)  # Ensure multiple instances can be enqueued
 async def job_counter(counter_file: str, job_index: int = 0):
     """Test job that writes to a file to track execution"""
     # Ensure directory exists
@@ -35,7 +34,7 @@ async def job_counter(counter_file: str, job_index: int = 0):
     return f"completed-{job_index}"
 
 
-@job()
+@fastjob.job()
 async def slow_test_job(duration: float, result_file: str):
     """Job that takes time - useful for testing interruption"""
     start_time = time.time()
@@ -48,7 +47,7 @@ async def slow_test_job(duration: float, result_file: str):
     return f"slow_job_completed_after_{duration}s"
 
 
-@job()
+@fastjob.job()
 async def database_intensive_job(job_id: str, iterations: int = 100):
     """Job that does database operations - useful for testing connection issues"""
     async with DatabaseContext() as pool:
@@ -61,6 +60,23 @@ async def database_intensive_job(job_id: str, iterations: int = 100):
                 results.append(result)
                 await asyncio.sleep(0.01)  # Small delay to make it interruptible
             return f"database_job_completed_{len(results)}_operations"
+
+
+@fastjob.job()
+async def failing_job(should_fail: bool, job_id: int):
+    """Job that can be configured to fail"""
+    if should_fail:
+        raise Exception(f"Intentional failure in job {job_id}")
+    return f"success_job_{job_id}"
+
+
+@fastjob.job()
+async def timed_job(expected_time: str, log_file: str):
+    """Job that logs its execution time"""
+    execution_time = datetime.now().isoformat()
+    with open(log_file, "a") as f:
+        f.write(f"{expected_time}|{execution_time}\n")
+    return f"timed_job_completed"
 
 
 class TestProductionScenarios:
@@ -80,13 +96,13 @@ class TestProductionScenarios:
 
                 # Fast jobs that should complete
                 for i in range(5):
-                    job_id = await enqueue(
+                    job_id = await fastjob.enqueue(
                         job_counter, counter_file=counter_file, job_index=i
                     )
                     job_ids.append(job_id)
 
                 # Slow job that will be interrupted
-                slow_job_id = await enqueue(
+                slow_job_id = await fastjob.enqueue(
                     slow_test_job, duration=10.0, result_file=result_file
                 )
                 job_ids.append(slow_job_id)
@@ -162,20 +178,18 @@ if __name__ == "__main__":
             async with DatabaseContext() as pool:
                 job_ids_before = []
                 for i in range(3):
-                    job_id = await enqueue(
+                    job_id = await fastjob.enqueue(
                         job_counter, counter_file=success_file, job_index=i
                     )
                     job_ids_before.append(job_id)
 
             # Start processing jobs normally
-            async with DatabaseContext() as pool:
-                async with pool.acquire() as conn:
-                    # Process initial jobs to establish baseline
-                    for _ in range(3):
-                        processed = await process_jobs(conn)
-                        if not processed:
-                            break
-                        await asyncio.sleep(0.1)
+            # Process initial jobs to establish baseline
+            for _ in range(3):
+                processed = await fastjob.run_worker(run_once=True)
+                if not processed:
+                    break
+                await asyncio.sleep(0.1)
 
             # Verify initial jobs processed
             assert os.path.exists(success_file), "Initial jobs were not processed"
@@ -186,21 +200,20 @@ if __name__ == "__main__":
                 # Add more jobs after "reconnection"
                 job_ids_after = []
                 for i in range(2):
-                    job_id = await enqueue(
+                    job_id = await fastjob.enqueue(
                         job_counter, counter_file=success_file, job_index=i + 10
                     )
                     job_ids_after.append(job_id)
 
                 # Process jobs after reconnection
-                async with new_pool.acquire() as conn:
-                    processed_count = 0
-                    for _ in range(5):  # Try up to 5 times
-                        processed = await process_jobs(conn)
-                        if processed:
-                            processed_count += 1
-                        else:
-                            break
-                        await asyncio.sleep(0.1)
+                processed_count = 0
+                for _ in range(5):  # Try up to 5 times
+                    processed = await fastjob.run_worker(run_once=True)
+                    if processed:
+                        processed_count += 1
+                    else:
+                        break
+                    await asyncio.sleep(0.1)
 
                 # Verify jobs processed after "recovery"
                 with open(success_file, "r") as f:
@@ -225,7 +238,7 @@ if __name__ == "__main__":
 
                 job_ids = []
                 for i in range(20):
-                    job_id = await enqueue(
+                    job_id = await fastjob.enqueue(
                         job_counter, counter_file=execution_log, job_index=i
                     )
                     job_ids.append(job_id)
@@ -233,18 +246,16 @@ if __name__ == "__main__":
             # Simulate multiple workers processing concurrently
             async def worker_simulation(worker_id: int):
                 """Simulate a worker processing jobs"""
-                async with DatabaseContext() as pool:
-                    async with pool.acquire() as conn:
-                        processed_count = 0
-                        for _ in range(50):  # Try many times
-                            processed = await process_jobs(conn)
-                            if processed:
-                                processed_count += 1
-                            else:
-                                # No jobs available, stop
-                                break
-                            await asyncio.sleep(0.01)  # Small delay to simulate work
-                        return processed_count
+                processed_count = 0
+                for _ in range(50):  # Try many times
+                    processed = await fastjob.run_worker(run_once=True)
+                    if processed:
+                        processed_count += 1
+                    else:
+                        # No jobs available, stop
+                        break
+                    await asyncio.sleep(0.01)  # Small delay to simulate work
+                return processed_count
 
             # Run multiple workers concurrently
             workers = [worker_simulation(i) for i in range(4)]
@@ -283,7 +294,7 @@ if __name__ == "__main__":
     async def test_worker_resilience_to_job_failures(self):
         """Test that workers continue processing after job failures"""
 
-        @job(retries=1, unique=False)
+        @fastjob.job(retries=1, unique=False)
         async def failing_job(should_fail: bool, job_id: int = 0):
             """Job that fails conditionally"""
             if should_fail:
@@ -302,30 +313,29 @@ if __name__ == "__main__":
 
                 # Failing jobs
                 for i in range(3):
-                    job_id = await enqueue(failing_job, should_fail=True, job_id=i)
+                    job_id = await fastjob.enqueue(failing_job, should_fail=True, job_id=i)
                     job_ids.append(job_id)
 
                 # Successful jobs
                 for i in range(5):
-                    job_id = await enqueue(
+                    job_id = await fastjob.enqueue(
                         job_counter, counter_file=success_file, job_index=i + 100
                     )
                     job_ids.append(job_id)
 
-                # Process all jobs
-                async with pool.acquire() as conn:
-                    processed_count = 0
-                    for _ in range(20):  # More attempts than jobs to handle retries
-                        processed = await process_jobs(conn)
-                        if processed:
-                            processed_count += 1
-                            await asyncio.sleep(0.1)  # Give time for processing
-                        else:
-                            # No more jobs, wait a bit in case retries are pending
-                            await asyncio.sleep(0.5)
-                            retry_processed = await process_jobs(conn)
-                            if not retry_processed:
-                                break  # Really no more jobs
+                # Process all jobs using global API
+                processed_count = 0
+                for _ in range(20):  # More attempts than jobs to handle retries
+                    processed = await fastjob.run_worker(run_once=True)
+                    if processed:
+                        processed_count += 1
+                        await asyncio.sleep(0.1)  # Give time for processing
+                    else:
+                        # No more jobs, wait a bit in case retries are pending
+                        await asyncio.sleep(0.5)
+                        retry_processed = await fastjob.run_worker(run_once=True)
+                        if not retry_processed:
+                            break  # Really no more jobs
 
                 # Verify successful jobs completed despite failures
                 assert os.path.exists(
@@ -370,7 +380,7 @@ if __name__ == "__main__":
         with tempfile.TemporaryDirectory() as temp_dir:
             timing_file = os.path.join(temp_dir, "timing_log.txt")
 
-            @job()
+            @fastjob.job()
             async def timed_job(expected_time: str, log_file: str):
                 """Job that logs when it actually executed"""
                 actual_time = datetime.now()
@@ -394,7 +404,7 @@ if __name__ == "__main__":
             async with DatabaseContext() as pool:
                 job_ids = []
                 for scheduled_time in scheduled_times:
-                    job_id = await enqueue(
+                    job_id = await fastjob.enqueue(
                         timed_job,
                         expected_time=scheduled_time.isoformat(),
                         log_file=timing_file,
@@ -409,7 +419,7 @@ if __name__ == "__main__":
                     while (
                         processed_jobs < 3 and time.time() - start_time < 10
                     ):  # 10-second timeout
-                        processed = await process_jobs(conn)
+                        processed = await fastjob.run_worker(run_once=True)
                         if processed:
                             processed_jobs += 1
                         await asyncio.sleep(0.1)
@@ -451,7 +461,7 @@ if __name__ == "__main__":
                 start_enqueue = time.time()
 
                 for i in range(job_count):
-                    job_id = await enqueue(
+                    job_id = await fastjob.enqueue(
                         job_counter, counter_file=throughput_file, job_index=i
                     )
                     job_ids.append(job_id)
@@ -465,7 +475,7 @@ if __name__ == "__main__":
                     async with pool.acquire() as conn:
                         processed = 0
                         while True:
-                            job_processed = await process_jobs(conn)
+                            job_processed = await fastjob.run_worker(run_once=True)
                             if job_processed:
                                 processed += 1
                             else:
