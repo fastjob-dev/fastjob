@@ -14,23 +14,32 @@ from fastjob.db.connection import close_pool
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
 
 
+@pytest.fixture(scope="session", autouse=True)
+async def setup_instance_test_database():
+    """Set up test database once per test session."""
+    await create_test_database()
+    yield
+
+
 @pytest.fixture(autouse=True)
 async def clean_instance_api_state():
-    """Clean instance API state before each test to ensure isolation."""
-    # Ensure database exists and is clean
-    await create_test_database()
-
-    # Clean up any existing global connections (shouldn't be used, but be safe)
+    """Clean instance API state before each test - FAST VERSION."""
+    # Just close existing connections - database setup handled by session fixture
     await close_pool()
 
     yield
 
-    # Clean up after test - close global connections
+    # Clean up after test - close connections
     await close_pool()
 
 
 @pytest.fixture
 async def clean_db():
-    """Additional fixture for tests that need explicit clean database state."""
-    await create_test_database()
+    """Additional fixture for tests that need explicit clean database state - FAST VERSION."""
+    # Just clear tables instead of recreating database
+    from fastjob.client import FastJob
+    app = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
+    pool = await app.get_pool()
+    await clear_table(pool)
+    await app.close()
     return None

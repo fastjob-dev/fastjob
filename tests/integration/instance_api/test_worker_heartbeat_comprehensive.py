@@ -26,22 +26,23 @@ from tests.db_utils import create_test_database, drop_test_database
 
 @pytest.fixture
 async def clean_db():
-    """Clean database before each test"""
-    await create_test_database()
-    
-    # Clear worker records from test database
-    from fastjob.db.connection import get_pool
-    pool = await get_pool()
+    """Clean database before each test - FAST VERSION"""
+    # Just clear worker records, database setup handled by conftest.py
+    from fastjob.client import FastJob
+    app = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
+    pool = await app.get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM fastjob_workers")
+    await app.close()
     
     yield
     
     # Clear worker records after test
+    app = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
+    pool = await app.get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM fastjob_workers")
-    
-    await drop_test_database()
+    await app.close()
 
 
 @pytest.fixture

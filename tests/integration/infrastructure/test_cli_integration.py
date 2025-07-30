@@ -54,9 +54,8 @@ async def test_cli_help_commands():
 @pytest.mark.asyncio
 async def test_setup_command():
     """Test database setup command"""
-    # Drop and recreate test database for clean setup test
-    subprocess.run(["dropdb", "--if-exists", "fastjob_test"], check=False)
-    subprocess.run(["createdb", "fastjob_test"], check=True)
+    # Ensure test database exists (don't drop if in use by other tests)
+    subprocess.run(["createdb", "fastjob_test"], check=False)  # Ignore if exists
 
     # Run setup
     result = run_cli_command(["setup"])

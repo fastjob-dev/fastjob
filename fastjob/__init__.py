@@ -86,7 +86,7 @@ __all__ = [
     "stop_embedded_worker", 
     "is_embedded_worker_running",
     "start_embedded_worker_async",
-    "stop_embedded_worker_async",
+    "get_embedded_worker_status",
     # Development helpers
     "is_dev_mode", 
     # Plugin system
@@ -508,5 +508,5 @@ from .local import (
     stop_embedded_worker,
     is_embedded_worker_running,
     start_embedded_worker_async,
-    stop_embedded_worker_async,
+    get_embedded_worker_status,
 )

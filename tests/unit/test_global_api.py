@@ -100,23 +100,20 @@ class TestGlobalAPI:
         """Test that fastjob.schedule() uses the global app"""
         from datetime import datetime, timedelta
         
-        fastjob.configure(database_url="postgresql://test@localhost/test_db")
-        
         @fastjob.job()
         async def test_job(message: str):
             return message
         
-        # Mock the global app's schedule method
-        app = fastjob._get_global_app()
-        with patch.object(app, 'schedule', new_callable=AsyncMock) as mock_schedule:
-            mock_schedule.return_value = "scheduled-job-id"
+        # Mock the global enqueue function since schedule() calls enqueue() internally
+        with patch('fastjob.enqueue', new_callable=AsyncMock) as mock_enqueue:
+            mock_enqueue.return_value = "scheduled-job-id"
             
             # Call global schedule
             run_at = datetime.now() + timedelta(hours=1)
-            job_id = await fastjob.schedule(test_job, run_at, message="test")
+            job_id = await fastjob.schedule(test_job, run_at=run_at, message="test")
             
-            # Should have called app.schedule
-            mock_schedule.assert_called_once_with(test_job, run_at, message="test")
+            # Should have called enqueue with scheduled_at parameter
+            mock_enqueue.assert_called_once_with(test_job, scheduled_at=run_at, message="test")
             assert job_id == "scheduled-job-id"
 
     @pytest.mark.asyncio
