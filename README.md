@@ -118,27 +118,25 @@ python main.py
 
 The jobs run asynchronously, get retried automatically if they fail, and you can monitor everything with `fastjob status`.
 
-### Development vs Production: Same Code, Different Setup
+### Development vs Production: Write Once, Run Anywhere
 
-The best part? Your job code stays identical between development and production.
-
-**Same code works in both environments automatically:**
+The best part? I hate having different code paths for dev and prod, so I made sure you don't need them.
 
 ```python
-# Add to your app startup - automatically detects environment
+# Stick this in your app startup and forget about it
 if fastjob.is_dev_mode():
     fastjob.start_embedded_worker()
 ```
 
-**Development:** Set `FASTJOB_DEV_MODE=true` and jobs run in your app process  
-**Production:** Run separate worker processes for better scale and monitoring
+**Development:** `FASTJOB_DEV_MODE=true` → jobs run inside your app (no extra processes)  
+**Production:** Leave that env var unset → run `fastjob start` in separate processes
 
 ```bash
-# Production worker processes
+# Production: spin up dedicated workers
 fastjob start --concurrency 4 --queues urgent,background
 ```
 
-Same `@fastjob.job()` functions, same `enqueue()` calls, same application code!
+Your job functions don't change. Your enqueue calls don't change. Nothing changes except how the workers run.
 
 ## A practical example
 
@@ -175,21 +173,21 @@ async def startup():
 
 Same code, different worker setup.
 
-## API Patterns: Global vs Instance-Based
+## Two Ways to Use FastJob
 
-FastJob provides two distinct API patterns to suit different application architectures. Understanding when to use each is crucial for optimal performance and maintainability.
+Most people start with the Global API (it's simpler), but if you're building microservices or need multiple databases, the Instance API gives you more control.
 
-### Global API (Recommended for most applications)
+### Global API (Start here)
 
-The Global API uses a singleton pattern with module-level functions, perfect for single-database applications:
+This is the "just import and go" approach. Perfect for most apps:
 
 ```python
 import fastjob
 
-# Configure once at startup (typically in main.py or app initialization)
+# Set this up once when your app starts
 fastjob.configure(database_url="postgresql://localhost/myapp")
 
-# Define jobs anywhere in your app - they're automatically registered globally
+# Then define jobs anywhere in your codebase
 @fastjob.job(retries=3, queue="emails")
 async def send_email(to: str, subject: str, body: str):
     # Your email logic here
@@ -223,20 +221,19 @@ if fastjob.is_dev_mode():
 # Production: fastjob start --concurrency 4 (CLI)
 ```
 
-**Key characteristics:**
-- Single global job registry shared across your application
-- Module-level configuration via `fastjob.configure()`
-- Jobs defined with `@fastjob.job()` are automatically registered
-- Simple import and use pattern: `import fastjob`
+What you get:
+- One shared job registry for your whole app
+- Configure once, use everywhere
+- Just `import fastjob` and you're ready to go
 
-### Instance-Based API (Advanced use cases)
+### Instance-Based API (For microservices and multi-tenant apps)
 
-The Instance API provides explicit control with isolated FastJob instances:
+When you need multiple isolated job queues, create separate FastJob instances:
 
 ```python
 from fastjob import FastJob
 
-# Create separate instances for different microservices
+# Say you have a user service and an order service
 user_service = FastJob(
     database_url="postgresql://localhost/user_service",
     default_concurrency=2,
@@ -249,7 +246,7 @@ order_service = FastJob(
     result_ttl=3600
 )
 
-# Each service maintains its own job registry
+# Each service gets its own job registry and workers
 @user_service.job(retries=3, queue="user_tasks")
 async def send_welcome_email(user_id: int, email: str):
     print(f"Sending welcome email to user {user_id}: {email}")
@@ -289,13 +286,13 @@ async def shutdown():
     await order_service.close()
 ```
 
-**Key characteristics:**
-- Each instance has isolated job registry and configuration
-- Explicit instance creation: `app = FastJob(...)`
-- Jobs bound to specific instances: `@app.job()`
-- Manual connection management and cleanup required
+What you get:
+- Completely separate job queues and databases
+- Each service can have different settings
+- Perfect isolation for testing and deployment
+- You handle connections yourself (call `await app.close()` when done)
 
-### Detailed Comparison
+### Quick Comparison
 
 | Aspect | Global API | Instance-Based API |
 |--------|------------|-------------------|
@@ -308,27 +305,23 @@ async def shutdown():
 | **Testing** | Simpler setup | More flexible isolation |
 | **Debugging** | Single point of configuration | Multiple configurations to track |
 
-### When to Use Each Pattern
+### Which One Should You Use?
 
-**Choose Global API when:**
-- ✅ Single database application
-- ✅ Straightforward configuration needs
-- ✅ Getting started or prototyping
-- ✅ Following typical web framework patterns (FastAPI, Django, Flask)
-- ✅ Want the simplest possible setup
-- ✅ Memory usage is a concern
+**Start with Global API if:**
+- You have one database
+- You're building a typical web app
+- You want the easiest setup
+- You're just getting started
 
-**Choose Instance-Based API when:**
-- ✅ Microservices architecture with separate databases per service
-- ✅ Need complete job isolation between different parts of your app
-- ✅ Different services require different configurations (retries, TTL, etc.)
-- ✅ Multi-tenant applications with separate databases
-- ✅ Building libraries or frameworks that use FastJob internally
-- ✅ Complex testing scenarios requiring isolated job registries
+**Go with Instance-Based API if:**
+- You're doing microservices (different databases per service)
+- You need complete isolation between parts of your app
+- You're building multi-tenant apps
+- You're embedding FastJob in a library
 
-### Can They Coexist?
+### Can I Mix Both?
 
-Yes! You can use both patterns in the same application:
+Yeah, absolutely:
 
 ```python
 import fastjob
@@ -355,22 +348,22 @@ await payment_service.enqueue(process_payment)
 
 **Best Practice**: Start with the Global API for simplicity, then migrate specific use cases to Instance-Based API as your needs become more complex.
 
-### CLI Usage with Different APIs
+### CLI for Both APIs
 
-**Global API + CLI (Standard approach):**
+**Global API + CLI:**
 ```bash
-# Configure via environment variable
+# Set your database URL once
 export FASTJOB_DATABASE_URL="postgresql://localhost/myapp"
 
-# CLI commands work directly
+# Then use CLI commands normally
 fastjob setup
 fastjob start --concurrency 4
 fastjob status
 ```
 
-**Instance-Based API + CLI (Clean and Simple):**
+**Instance-Based API + CLI:**
 
-FastJob CLI now supports instance-based usage directly with the `--database-url` parameter:
+I added `--database-url` support so you can target specific databases:
 
 ```bash
 # Setup databases for different services
@@ -411,9 +404,9 @@ fastjob start --database-url="postgresql://localhost/order_service" --queues ord
 - ✅ **Perfect for microservices** - each worker targets specific service database
 - ✅ **Same job code** - your `@service.job()` functions work unchanged
 
-## More features
+## More useful stuff
 
-**Type validation:** Use Pydantic models to validate job arguments automatically
+**Automatic type validation** with Pydantic models:
 
 ```python
 class EmailJobArgs(BaseModel):
@@ -423,11 +416,11 @@ class EmailJobArgs(BaseModel):
 
 @fastjob.job(args_model=EmailJobArgs)
 async def send_email(to: str, subject: str, user_id: int):
-    # Arguments are validated before the job runs
+    # FastJob validates arguments before your job runs
     pass
 ```
 
-**Priority queues:** Important jobs get processed first
+**Priority queues** for when some jobs matter more:
 
 ```python
 @fastjob.job(priority=1, queue="critical")    # High priority
@@ -439,15 +432,15 @@ async def cleanup_old_files():
     pass
 ```
 
-**Unique jobs:** Prevent duplicate jobs from being queued
+**Unique jobs** to avoid duplicates:
 
 ```python
 @fastjob.job(unique=True)
 async def send_welcome_email(user_email: str):
-    # Only one welcome email per user_email can be queued at a time
+    # FastJob won't queue this twice for the same email
     pass
 
-# These will return the same job ID (second one won't create a new job)
+# These return the same job ID - no duplicate created
 job1 = await fastjob.enqueue(send_welcome_email, user_email="alice@example.com")
 job2 = await fastjob.enqueue(send_welcome_email, user_email="alice@example.com")
 assert job1 == job2
@@ -933,9 +926,9 @@ python run_tests.py  # Run full test suite (~2 minutes)
 
 ## Why I built this
 
-I've worked with background jobs in production for years and got frustrated with the complexity of existing solutions. Redis-based queues are fast but can lose jobs. Database-backed queues are reliable but often have clunky APIs.
+After years of wrestling with Celery configs and Redis setups just to send an email in the background, I got tired of the complexity. Redis queues are fast but lose jobs when things go wrong. Database queues are reliable but usually have terrible APIs.
 
-FastJob combines the reliability of PostgreSQL with a clean, modern Python API. It's what I wish existed when I started building async Python applications.
+I wanted something that just worked: reliable like PostgreSQL, simple like the good parts of Celery, and built for async Python from day one. FastJob is what I wish I had when I was building my first async web apps.
 
 ## Contributing
 
