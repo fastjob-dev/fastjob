@@ -21,10 +21,25 @@ async def resolve_fastjob_instance(args):
         FastJob instance or None (to use global API)
     """
     from fastjob import FastJob
+    from pydantic import ValidationError
     
     # Use instance-based API if database URL is provided
     if hasattr(args, 'database_url') and args.database_url:
-        return FastJob(database_url=args.database_url)
+        try:
+            return FastJob(database_url=args.database_url)
+        except ValidationError as e:
+            # Make database URL errors friendlier
+            if 'database_url' in str(e):
+                if 'postgresql' in str(e).lower():
+                    raise ValueError(f"Invalid database URL: {args.database_url}\nFastJob requires PostgreSQL URLs like: postgresql://user:password@localhost/database")
+                else:
+                    raise ValueError(f"Invalid database URL: {args.database_url}")
+            raise ValueError(f"Configuration error: {e}")
+        except Exception as e:
+            # Handle other connection/config errors
+            if 'connect' in str(e).lower() or 'connection' in str(e).lower():
+                raise ValueError(f"Can't connect to database: {args.database_url}\nMake sure PostgreSQL is running and the URL is correct")
+            raise ValueError(f"Database configuration error: {e}")
     
     # Otherwise use global API
     return None
@@ -250,7 +265,19 @@ async def handle_setup_command(args):
 
         return 0
     except Exception as e:
-        print_status(f"Setup failed: {e}", "error")
+        # Make setup errors friendlier
+        error_msg = str(e).lower()
+        if 'connection' in error_msg or 'connect' in error_msg:
+            print_status("Can't connect to database", "error")
+            print("Make sure PostgreSQL is running and your database URL is correct")
+        elif 'database' in error_msg and 'does not exist' in error_msg:
+            print_status("Database doesn't exist", "error") 
+            print("Run: createdb your_database_name")
+        elif 'permission' in error_msg or 'authentication' in error_msg:
+            print_status("Database permission error", "error")
+            print("Check your database username/password in the connection URL")
+        else:
+            print_status(f"Setup failed: {e}", "error")
         return 1
     finally:
         # Clean up instance if used
