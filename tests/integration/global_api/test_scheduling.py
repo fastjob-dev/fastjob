@@ -3,14 +3,10 @@ Test suite for job scheduling functionality
 """
 
 import pytest
-import time
 import uuid
 from datetime import datetime, timedelta
 
 import fastjob
-from fastjob.core.processor import process_jobs
-from fastjob.db.connection import get_pool, close_pool
-from tests.db_utils import create_test_database, drop_test_database, clear_table
 
 import os
 

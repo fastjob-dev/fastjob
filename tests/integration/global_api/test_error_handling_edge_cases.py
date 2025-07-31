@@ -7,7 +7,6 @@ Rewritten to use global API consistently and be reliable.
 
 import os
 import asyncio
-import uuid
 
 import pytest
 

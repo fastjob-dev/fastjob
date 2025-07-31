@@ -7,7 +7,7 @@ that support both APIs and may use mixed patterns.
 
 import pytest
 import os
-from tests.db_utils import create_test_database, clear_table
+from tests.db_utils import create_test_database
 from fastjob.db.connection import close_pool
 
 # Ensure test database URL is set

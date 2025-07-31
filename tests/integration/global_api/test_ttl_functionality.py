@@ -7,7 +7,6 @@ and that cleanup works correctly.
 
 import os
 import asyncio
-from datetime import datetime, timedelta, timezone
 
 import pytest
 

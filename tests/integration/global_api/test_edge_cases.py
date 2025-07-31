@@ -3,18 +3,12 @@ Test suite for edge cases, error handling, and integration scenarios
 """
 
 import pytest
-import asyncio
-import json
-import uuid
 import os
-import datetime as dt
-import argparse
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from pydantic import BaseModel
 
 import fastjob
-from fastjob.core.registry import _global_registry
 
 # Use test database
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"

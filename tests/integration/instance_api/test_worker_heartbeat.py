@@ -20,7 +20,6 @@ from fastjob.core.heartbeat import (
     WorkerHeartbeat,
     cleanup_stale_workers,
 )
-from tests.db_utils import create_test_database, drop_test_database
 
 
 # clean_db fixture now handled by conftest.py

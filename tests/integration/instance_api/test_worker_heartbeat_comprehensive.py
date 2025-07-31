@@ -21,7 +21,6 @@ from fastjob.core.heartbeat import (
     get_worker_status,
     cleanup_stale_workers,
 )
-from tests.db_utils import create_test_database, drop_test_database
 
 
 @pytest.fixture

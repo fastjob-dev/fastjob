@@ -76,7 +76,7 @@ async def timed_job(expected_time: str, log_file: str):
     execution_time = datetime.now().isoformat()
     with open(log_file, "a") as f:
         f.write(f"{expected_time}|{execution_time}\n")
-    return f"timed_job_completed"
+    return "timed_job_completed"
 
 
 class TestProductionScenarios:

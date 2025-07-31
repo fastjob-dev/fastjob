@@ -8,8 +8,6 @@ retry failed ones, cancel long-running ones, etc. Real-world stuff that matters.
 import pytest
 
 import fastjob
-from tests.db_utils import create_test_database, drop_test_database, clear_table
-from fastjob.db.connection import get_pool, close_pool
 
 
 async def process_test_jobs():

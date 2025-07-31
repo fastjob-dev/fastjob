@@ -8,7 +8,6 @@ and require proper global state management.
 import pytest
 import os
 from tests.db_utils import create_test_database, clear_table
-from fastjob.db.connection import close_pool
 
 # Ensure test database URL is set
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
