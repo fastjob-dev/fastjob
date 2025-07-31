@@ -179,7 +179,7 @@ async def cli_test_job(message: str):
         import fastjob
 
         # Enqueue a job
-        job_id = await fastjob.enqueue(
+        await fastjob.enqueue(
             test_cli_jobs.cli_test_job, message="Hello CLI"
         )
 

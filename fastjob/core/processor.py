@@ -153,8 +153,8 @@ async def _execute_job_safely(
     Returns:
         tuple: (success: bool, error_message: Optional[str])
     """
-    job_id = job_record["id"]
-    max_attempts = job_record["max_attempts"]
+    job_record["id"]
+    job_record["max_attempts"]
     
     # Parse job arguments with corruption handling
     try:
@@ -556,7 +556,7 @@ async def run_worker(
                                                 )
 
                                         # Clean up stale workers
-                                        stale_workers = await cleanup_stale_workers(
+                                        await cleanup_stale_workers(
                                             pool, stale_threshold_seconds=get_settings().stale_worker_threshold
                                         )
 

@@ -212,7 +212,7 @@ async def test_worker_failure_detection_and_cleanup(clean_db, fastjob_instance):
             worker.worker_id
         )
         assert result["status"] == "active"
-        initial_heartbeat = result["last_heartbeat"]
+        result["last_heartbeat"]
 
     # Simulate worker failure by cancelling heartbeat task
     if worker.heartbeat_task and not worker.heartbeat_task.cancelled():

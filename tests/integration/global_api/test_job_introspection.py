@@ -212,10 +212,10 @@ class TestJobListing:
     async def test_list_jobs_by_status(self):
         """Test filtering jobs by status"""
         # Enqueue jobs - one will be processed, one scheduled for future
-        job1 = await fastjob.enqueue(simple_task, message="immediate_job")
+        await fastjob.enqueue(simple_task, message="immediate_job")
         from datetime import datetime, timedelta
         future_time = datetime.now() + timedelta(hours=1)
-        job2 = await fastjob.enqueue(simple_task, message="future_job", scheduled_at=future_time)
+        await fastjob.enqueue(simple_task, message="future_job", scheduled_at=future_time)
 
         # Process jobs - only immediate job should be processed
         await process_test_jobs()

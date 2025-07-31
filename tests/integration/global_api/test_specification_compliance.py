@@ -64,11 +64,11 @@ async def test_pro_features_compliance():
     """Test Pro Features (Phase 2) compliance"""
     
     # ✅ Priority queues (numeric)
-    high_priority_job = await fastjob.enqueue(
+    await fastjob.enqueue(
         advanced_job, priority=10, message="high priority", count=1
     )
     
-    low_priority_job = await fastjob.enqueue(
+    await fastjob.enqueue(
         advanced_job, priority=100, message="low priority", count=1
     )
 

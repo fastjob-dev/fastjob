@@ -40,7 +40,7 @@ async def test_ttl_zero_deletes_immediately():
         assert processed
 
         # Job should be deleted immediately
-        status = await fastjob.get_job_status(job_id)
+        await fastjob.get_job_status(job_id)
         # With TTL=0, job should be deleted after completion
         # The exact behavior depends on implementation
         
@@ -109,7 +109,7 @@ async def test_ttl_cleanup_removes_expired_jobs():
         
         async with app_pool.acquire() as conn:
             # Check if job still exists
-            job_exists = await conn.fetchval(
+            await conn.fetchval(
                 "SELECT EXISTS(SELECT 1 FROM fastjob_jobs WHERE id = $1)",
                 uuid.UUID(job_id)
             )

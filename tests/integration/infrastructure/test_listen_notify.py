@@ -216,7 +216,7 @@ async def test_instant_job_processing(test_db, clean_db, background_worker):
     job_timing_data.clear()
 
     # Start the background worker
-    worker_task = await background_worker()
+    await background_worker()
 
     # Give worker time to fully start
     await asyncio.sleep(0.5)
@@ -488,7 +488,7 @@ async def test_rapid_job_enqueueing(test_db, clean_db, background_worker):
         )
 
     await asyncio.gather(*enqueue_tasks)
-    enqueue_duration = time.time() - enqueue_start
+    time.time() - enqueue_start
 
     # Wait for all jobs to complete
     timeout = 15
@@ -529,7 +529,7 @@ async def test_listen_notify_vs_polling_performance(
     # Test with moderate job load
     job_count = 15
 
-    processing_start = time.time()
+    time.time()
     enqueue_tasks = []
 
     for i in range(job_count):

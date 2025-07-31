@@ -56,9 +56,9 @@ async def test_immediate_vs_scheduled_jobs():
 async def test_priority_ordering(clean_db):
     """Test that higher priority jobs (lower numbers) are processed first"""
     # Enqueue jobs with different priorities
-    low_priority = await fastjob.enqueue(scheduled_job, priority=100, message="low")
-    high_priority = await fastjob.enqueue(scheduled_job, priority=1, message="high")
-    medium_priority = await fastjob.enqueue(
+    await fastjob.enqueue(scheduled_job, priority=100, message="low")
+    await fastjob.enqueue(scheduled_job, priority=1, message="high")
+    await fastjob.enqueue(
         scheduled_job, priority=50, message="medium"
     )
 

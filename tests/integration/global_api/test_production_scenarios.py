@@ -91,7 +91,7 @@ class TestProductionScenarios:
             result_file = os.path.join(temp_dir, "slow_job_result.txt")
 
             # Enqueue a mix of fast and slow jobs
-            async with DatabaseContext() as pool:
+            async with DatabaseContext():
                 job_ids = []
 
                 # Fast jobs that should complete
@@ -175,7 +175,7 @@ if __name__ == "__main__":
             success_file = os.path.join(temp_dir, "success_jobs.txt")
 
             # Create jobs that will succeed
-            async with DatabaseContext() as pool:
+            async with DatabaseContext():
                 job_ids_before = []
                 for i in range(3):
                     job_id = await fastjob.enqueue(
@@ -196,7 +196,7 @@ if __name__ == "__main__":
 
             # Now test recovery by creating a new pool (simulating reconnection)
             # In a real scenario, the pool would auto-reconnect on error
-            async with DatabaseContext() as new_pool:
+            async with DatabaseContext():
                 # Add more jobs after "reconnection"
                 job_ids_after = []
                 for i in range(2):

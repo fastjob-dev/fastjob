@@ -253,7 +253,7 @@ async def test_task_discovery():
         assert discovered_job_meta is not None
 
         # Enqueue the discovered job using global API
-        job_id = await fastjob.enqueue(
+        await fastjob.enqueue(
             discovered_job_meta["func"], message="Hello from discovered job!"
         )
 

@@ -90,13 +90,13 @@ async def test_concurrent_job_processing():
 async def test_database_connection_failures():
     """Test handling of database connection failures"""
     # Enqueue a job normally
-    job_id = await fastjob.enqueue(simple_job, message="connection test")
+    await fastjob.enqueue(simple_job, message="connection test")
 
     # Mock database connection failure
     with patch('fastjob.db.helpers.fetchval', side_effect=ConnectionError("DB down")):
         try:
             # This should handle the connection error gracefully
-            processed = await fastjob.run_worker(run_once=True)
+            await fastjob.run_worker(run_once=True)
             # Should either succeed with mock or handle error gracefully
         except ConnectionError:
             # Expected behavior - connection error should bubble up
@@ -175,11 +175,11 @@ async def test_large_job_payloads():
 async def test_worker_shutdown_handling():
     """Test graceful worker shutdown"""
     # Enqueue a quick job
-    job_id = await fastjob.enqueue(simple_job, message="shutdown test")
+    await fastjob.enqueue(simple_job, message="shutdown test")
 
     # Test that run_worker with run_once=True completes without hanging
     try:
-        processed = await fastjob.run_worker(run_once=True)
+        await fastjob.run_worker(run_once=True)
         # The main goal is to verify no hanging or crashing occurs
         print("Worker completed successfully without hanging")
     except Exception as e:
