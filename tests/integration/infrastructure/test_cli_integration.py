@@ -287,3 +287,100 @@ async def test_cli_signal_handling():
         process.kill()
         process.wait()
         pytest.fail("Worker did not shut down gracefully")
+
+
+@pytest.mark.asyncio
+async def test_cli_database_url_parameter():
+    """Test CLI commands with --database-url parameter"""
+    # Create a test database with a different name
+    test_db_name = "fastjob_cli_instance_test"
+    test_db_url = f"postgresql://postgres@localhost/{test_db_name}"
+    
+    # Create the test database
+    subprocess.run(["createdb", test_db_name], check=False)  # Ignore if exists
+    
+    try:
+        # Test setup command with --database-url
+        result = run_cli_command(["setup", "--database-url", test_db_url])
+        assert result.returncode == 0
+        assert "Database setup completed" in result.stdout or "Applied" in result.stdout
+        
+        # Test start command with --database-url (run-once to exit quickly)
+        result = run_cli_command(["start", "--database-url", test_db_url, "--run-once"], timeout=5)
+        assert result.returncode == 0
+        
+        # Verify the instance configuration is shown in output
+        assert "Using instance-based configuration" in result.stdout or result.stderr
+        assert test_db_url in result.stdout or result.stderr
+        
+    finally:
+        # Clean up the test database
+        subprocess.run(["dropdb", test_db_name], check=False)
+
+
+@pytest.mark.asyncio 
+async def test_cli_database_url_vs_environment():
+    """Test that --database-url parameter overrides environment variable"""
+    test_db_name = "fastjob_cli_override_test"
+    test_db_url = f"postgresql://postgres@localhost/{test_db_name}"
+    
+    # Create the test database
+    subprocess.run(["createdb", test_db_name], check=False)
+    
+    # Store original environment
+    original_env = os.environ.copy()
+    
+    try:
+        # Set environment variable to different database
+        os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
+        
+        # Use --database-url parameter to override environment
+        result = run_cli_command(["setup", "--database-url", test_db_url])
+        assert result.returncode == 0
+        
+        # Start worker with overridden database URL
+        result = run_cli_command([
+            "start", 
+            "--database-url", test_db_url, 
+            "--run-once", 
+            "--concurrency", "1"
+        ], timeout=5)
+        assert result.returncode == 0
+        
+        # Should show instance-based configuration, not global
+        assert "Using instance-based configuration" in result.stdout or result.stderr
+        
+    finally:
+        # Restore original environment
+        os.environ.clear()
+        os.environ.update(original_env)
+        # Clean up test database
+        subprocess.run(["dropdb", test_db_name], check=False)
+
+
+@pytest.mark.asyncio
+async def test_cli_database_url_validation():
+    """Test CLI handles invalid database URLs gracefully"""
+    # Test with invalid database URL
+    result = run_cli_command([
+        "setup", 
+        "--database-url", "invalid://not-a-real-database"
+    ], expect_success=False, timeout=10)
+    
+    # Should fail gracefully
+    assert result.returncode != 0
+    # Should show configuration error (our new error handling)
+    # Error message can be in stdout or stderr  
+    combined_output = (result.stdout + result.stderr).lower()
+    assert "error" in combined_output or "failed" in combined_output
+
+
+@pytest.mark.asyncio
+async def test_cli_without_database_url_uses_global():
+    """Test that CLI without --database-url uses global API"""
+    # Run start without --database-url parameter
+    result = run_cli_command(["start", "--run-once"], timeout=5)
+    assert result.returncode == 0
+    
+    # Should show global API configuration
+    assert "Using global API configuration" in result.stdout or result.stderr

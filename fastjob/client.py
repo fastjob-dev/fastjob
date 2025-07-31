@@ -635,6 +635,41 @@ class FastJob:
                 }
                 for row in rows
             ]
+    
+    async def get_migration_status(self) -> dict:
+        """
+        Get current database migration status for this instance.
+        
+        Returns:
+            Dictionary with migration status information
+        """
+        await self._ensure_initialized()
+        
+        # Use the migration runner with our instance's connection pool  
+        from .db.migration_runner import MigrationRunner
+        
+        migration_runner = MigrationRunner()
+        async with self._pool.acquire() as conn:
+            return await migration_runner._get_migration_status_with_connection(conn)
+    
+    async def run_migrations(self) -> int:
+        """
+        Run all pending database migrations for this instance.
+        
+        Returns:
+            Number of migrations applied
+            
+        Raises:
+            MigrationError: If any migration fails
+        """
+        await self._ensure_initialized()
+        
+        # Use the migration runner with our instance's connection pool
+        from .db.migration_runner import MigrationRunner
+        
+        migration_runner = MigrationRunner()
+        async with self._pool.acquire() as conn:
+            return await migration_runner._run_migrations_with_connection(conn)
             
     def _is_testing_mode(self) -> bool:
         """Check if we're in testing mode."""
