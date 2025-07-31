@@ -40,83 +40,44 @@ It's the job queue for developers who believe simple is beautiful.
 pip install fastjob
 ```
 
-## 5-Minute Quickstart
+## 2-Minute Quickstart
 
-Get FastJob running in under 5 minutes with this complete, copy-pasteable example:
-
-### 1. Install and Setup Database
+Copy, paste, run. That's it.
 
 ```bash
+# Install and setup (30 seconds)
 pip install fastjob
-createdb fastjob_demo
-export FASTJOB_DATABASE_URL="postgresql://localhost/fastjob_demo"
+export FASTJOB_DATABASE_URL="postgresql://localhost/postgres"  # Use existing DB
 fastjob setup
 ```
 
-### 2. Define Your Jobs (`jobs.py`)
-
 ```python
-import asyncio
+# Create demo.py (30 seconds)
 import fastjob
 
 @fastjob.job()
-async def send_welcome_email(user_email: str, name: str):
-    print(f"📧 Sending welcome email to {name} at {user_email}")
-    await asyncio.sleep(1)  # Simulate email sending
-    print(f"✅ Email sent successfully!")
-
-@fastjob.job(retries=3, queue="payments")
-async def process_payment(order_id: int, amount: float):
-    print(f"💳 Processing ${amount} payment for order {order_id}")
-    await asyncio.sleep(2)  # Simulate payment processing
-    print(f"✅ Payment processed successfully!")
-```
-
-### 3. Enqueue Jobs (`main.py`)
-
-```python
-import asyncio
-from jobs import send_welcome_email, process_payment
-import fastjob
+async def say_hello(name: str):
+    print(f"Hello {name}!")
 
 async def main():
-    print("🚀 Enqueueing some jobs...")
-
-    # Enqueue a welcome email
-    job_id1 = await fastjob.enqueue(
-        send_welcome_email,
-        user_email="alice@example.com",
-        name="Alice"
-    )
-    print(f"📝 Enqueued email job: {job_id1}")
-
-    # Enqueue a payment job
-    job_id2 = await fastjob.enqueue(
-        process_payment,
-        order_id=12345,
-        amount=99.99
-    )
-    print(f"📝 Enqueued payment job: {job_id2}")
-
-    print("✅ Jobs enqueued! Now start a worker to process them.")
+    # Queue and process jobs in development mode
+    await fastjob.enqueue(say_hello, name="World")
+    await fastjob.run_worker(run_once=True)  # Process jobs once and exit
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
 ```
 
-### 4. Run the Worker
-
 ```bash
-# In one terminal - start the worker
-fastjob start
-
-# In another terminal - enqueue the jobs
-python main.py
+# Run it (10 seconds)
+python demo.py
+# Output: Hello World!
 ```
 
-**🎉 That's it!** You should see your jobs being processed in the worker terminal.
+**That's it.** One file, one command, job done.
 
-The jobs run asynchronously, get retried automatically if they fail, and you can monitor everything with `fastjob status`.
+For production, just run `fastjob start` in a separate process instead of `run_once=True`.
 
 ### Development vs Production: Write Once, Run Anywhere
 
@@ -523,39 +484,24 @@ fastjob workers --stale --cleanup
 
 ## Configuration
 
-FastJob is configured via environment variables:
+Two settings you need to know about:
 
 ```bash
-# Required: Database connection
-export FASTJOB_DATABASE_URL="postgresql://user:password@localhost/myapp"
+# Your database (required)
+export FASTJOB_DATABASE_URL="postgresql://localhost/myapp"
 
-# Optional: Job result time-to-live in seconds (default: 300 = 5 minutes)
-export FASTJOB_RESULT_TTL=300  # 300 = 5 minutes (default), 0 = delete immediately, 3600 = keep 1 hour
-
-# Optional: Where to find your job functions
-export FASTJOB_JOBS_MODULE="myapp.jobs"
-
-# Optional: Logging level
-export FASTJOB_LOG_LEVEL="INFO"
-
-# Optional: Environment detection for automatic worker management
+# Development mode (optional, makes workers run in your app)
 export FASTJOB_DEV_MODE=true
-
-# Optional: Worker heartbeat interval in seconds (default: 5.0)
-export FASTJOB_WORKER_HEARTBEAT_INTERVAL=5.0
 ```
 
-### Job cleanup
+**That's it.** Everything else has sensible defaults.
 
-By default, successful jobs are kept for 5 minutes to allow for debugging and monitoring, then automatically cleaned up. Failed jobs are always kept for debugging.
+Need to customize something? Here are the other options:
 
 ```bash
-# Delete immediately for high-volume production
-export FASTJOB_RESULT_TTL=0  # Delete immediately
-
-# Keep longer for debugging/auditing
-export FASTJOB_RESULT_TTL=3600   # 1 hour
-export FASTJOB_RESULT_TTL=86400  # 1 day
+export FASTJOB_RESULT_TTL=300        # Keep completed jobs for 5 minutes (0 = delete immediately)
+export FASTJOB_JOBS_MODULE="myapp.tasks"  # Where to find @job functions (default: auto-discover)
+export FASTJOB_LOG_LEVEL="DEBUG"    # Logging level (default: INFO)
 ```
 
 When TTL > 0, workers automatically clean up expired jobs every 5 minutes.
