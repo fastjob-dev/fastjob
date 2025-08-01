@@ -11,7 +11,9 @@ import fastjob
 
 
 # Configure basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 
 # Define job argument models
@@ -139,8 +141,8 @@ async def main():
         generate_report,
         run_in=120,  # 2 minutes (120 seconds)
         priority=20,
-        report_type="user_activity", 
-        date_range="last_7_days"
+        report_type="user_activity",
+        date_range="last_7_days",
     )
     print(f"   Job scheduled for 2 minutes: {job_id6}")
 
@@ -162,10 +164,10 @@ async def main():
     print("   Processing jobs for 15 seconds...")
     await asyncio.sleep(15)
 
-    # 9. Get basic queue statistics 
+    # 9. Get basic queue statistics
     print("\n9. Queue Statistics:")
     queue_stats = await fastjob.get_queue_stats()
-    
+
     if queue_stats:
         for queue in queue_stats:
             print(f"   Queue '{queue['queue']}':")
@@ -180,7 +182,7 @@ async def main():
     # 10. List recent jobs
     print("\n10. Recent Jobs:")
     recent_jobs = await fastjob.list_jobs(limit=5)
-    
+
     if recent_jobs:
         print("   Recent jobs:")
         for job in recent_jobs:

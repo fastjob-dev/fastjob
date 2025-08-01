@@ -7,13 +7,12 @@ import asyncio
 import json
 import uuid
 import os
-import time
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
-from pydantic import BaseModel, ValidationError
+from unittest.mock import patch
+from pydantic import BaseModel
 
 import fastjob
-from fastjob.core.processor import process_jobs, run_worker
+from fastjob.core.processor import process_jobs
 from fastjob.core.registry import get_job, clear_registry, _registry
 from fastjob.db.connection import get_pool, close_pool
 from tests.db_utils import create_test_database, drop_test_database, clear_table
@@ -142,7 +141,7 @@ async def test_malformed_job_data():
 @pytest.mark.asyncio
 async def test_concurrent_job_processing():
     """Test concurrent processing of jobs by multiple workers"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -217,7 +216,7 @@ async def test_database_connection_failures():
 @pytest.mark.asyncio
 async def test_job_argument_validation_edge_cases():
     """Test complex argument validation scenarios"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -327,7 +326,7 @@ async def test_exception_handling_in_jobs():
 @pytest.mark.asyncio
 async def test_large_job_payloads():
     """Test handling of jobs with large argument payloads"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -373,7 +372,7 @@ async def test_large_job_payloads():
 @pytest.mark.asyncio
 async def test_worker_shutdown_handling():
     """Test graceful worker shutdown"""
-    
+
     await create_test_database()
     try:
         pool = await get_pool()
@@ -503,13 +502,10 @@ async def test_cli_integration():
     await create_test_database()
     try:
         # Test CLI imports don't crash
-        from fastjob.cli.main import main
 
         # Test migration command exists
-        from fastjob.db.migrations import run_migrations
 
         # Test that we can import worker functions
-        from fastjob.core.processor import run_worker
 
         # Test basic argument parsing
         import argparse
@@ -556,10 +552,12 @@ async def test_environment_variable_handling():
             del os.environ["FASTJOB_DATABASE_URL"]
 
         # Should handle missing FASTJOB_DATABASE_URL gracefully
-        from fastjob.settings import FASTJOB_DATABASE_URL
+        from fastjob.settings import get_settings
+
+        settings = get_settings()
 
         assert (
-            FASTJOB_DATABASE_URL is not None
+            settings.database_url is not None
         )  # Should have a default or raise a clear error
 
         # Test with custom environment variables
@@ -568,17 +566,13 @@ async def test_environment_variable_handling():
         os.environ["FASTJOB_LOG_LEVEL"] = "DEBUG"
         os.environ["FASTJOB_LOG_FORMAT"] = "structured"
 
-        # Re-import to pick up new environment
-        import importlib
-        import fastjob.settings
+        # Reload settings to pick up new environment
+        from fastjob.settings import get_settings
 
-        importlib.reload(fastjob.settings)
+        settings = get_settings(reload=True)
 
         # Verify settings were picked up
-        assert (
-            fastjob.settings.FASTJOB_DATABASE_URL
-            == "postgresql://test@localhost/test_db"
-        )
+        assert settings.database_url == "postgresql://test@localhost/test_db"
 
     finally:
         # Restore original environment

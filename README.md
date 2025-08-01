@@ -132,7 +132,11 @@ fastjob.start_embedded_worker()
 **Production:** Jobs run in separate worker processes (better for scale)
 
 ```bash
-fastjob start --concurrency 4 --queues default,urgent
+# Process all available queues (default behavior)
+fastjob start --concurrency 4
+
+# Or target specific queues only
+fastjob start --concurrency 4 --queues urgent,background
 ```
 
 Same `@fastjob.job()` functions, same `enqueue()` calls. Just different worker management.
@@ -163,7 +167,7 @@ async def upload_photo(user_id: int, image_data: bytes):
 
 @app.on_event("startup")
 async def startup():
-    if fastjob.run_in_dev_mode():
+    if fastjob.is_dev_mode():
         fastjob.start_embedded_worker()
 ```
 
@@ -266,7 +270,7 @@ Contact me at abhinav@apiclabs.com for Pro/Enterprise licensing.
 
 ## CLI Commands
 
-FastJob provides 3 simple commands for all operations:
+FastJob provides simple commands for all operations:
 
 ```bash
 # Setup database (run once)
@@ -277,13 +281,17 @@ fastjob start --concurrency 4 --queues default,urgent
 
 # Check system status
 fastjob status --verbose --jobs
+
+# Monitor workers (production)
+fastjob workers --stale --cleanup
 ```
 
 **Command details:**
 
-- **`fastjob setup`** - Initialize/update database schema (replaces migrations)
-- **`fastjob start`** - Start worker to process jobs (replaces worker command)
-- **`fastjob status`** - Show system health, job stats, and queue info (replaces health/jobs/queues)
+- **`fastjob setup`** - Initialize/update database schema
+- **`fastjob start`** - Start worker to process jobs
+- **`fastjob status`** - Show system health, job stats, and queue info
+- **`fastjob workers`** - Monitor worker heartbeats and health (production monitoring)
 
 ## Configuration
 
@@ -304,6 +312,9 @@ export FASTJOB_LOG_LEVEL="INFO"
 
 # Optional: Environment detection for automatic worker management
 export FASTJOB_DEV_MODE=true
+
+# Optional: Worker heartbeat interval in seconds (default: 5.0)
+export FASTJOB_WORKER_HEARTBEAT_INTERVAL=5.0
 ```
 
 ### Job cleanup
@@ -387,6 +398,30 @@ CMD ["fastjob", "start", "--concurrency", "4"]
 fastjob start --queues critical,emails --concurrency 2
 fastjob start --queues background --concurrency 1
 ```
+
+## Worker Monitoring & Heartbeats
+
+FastJob includes worker heartbeats for production monitoring. Workers register themselves and send periodic heartbeats to detect failures and provide operational visibility.
+
+**Basic monitoring:**
+```bash
+# Check system status (includes worker summary)
+fastjob status
+
+# View detailed worker information  
+fastjob workers
+
+# Clean up stale worker records
+fastjob workers --cleanup
+```
+
+**Key benefits:**
+- Detect crashed workers immediately (OOM, segfaults, container kills)
+- Real-time worker status for monitoring and alerting
+- Automatic cleanup of stale worker records
+- Accurate worker counts for autoscaling decisions
+
+Workers heartbeat every 5 seconds and are considered stale after 5 minutes of no contact. See `examples/production/` for detailed monitoring and automation examples.
 
 ## Migrating from other job queues
 
@@ -492,7 +527,7 @@ async def upload_file(file_id: int):
 
 @app.on_event("startup")
 async def startup():
-    if fastjob.run_in_dev_mode():
+    if fastjob.is_dev_mode():
         fastjob.start_embedded_worker()
 ```
 
