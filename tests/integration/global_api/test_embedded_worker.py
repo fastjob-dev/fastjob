@@ -15,8 +15,7 @@ from fastjob.local import (
     is_embedded_worker_running,
     get_embedded_worker_status,
 )
-from tests.db_utils import create_test_database, drop_test_database
-from fastjob.db.connection import close_pool
+# Database setup handled by conftest.py
 
 # Set up test environment
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
@@ -24,22 +23,20 @@ os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_te
 
 @pytest.fixture
 async def cleanup_worker():
-    """Ensure worker is stopped after each test and clean up database"""
-    # Aggressive cleanup before test
+    """Ensure worker is stopped after each test - FAST VERSION"""
+    # Quick cleanup before test
     await stop_embedded_worker()
-    await close_pool()  # Close any existing pool
-    await create_test_database()
     yield
-    # Aggressive cleanup after test
+    # Quick cleanup after test
     await stop_embedded_worker()
-    await close_pool()  # Ensure clean shutdown
-    await drop_test_database()
-    # Clear any global state that might interfere
-
-    globals()["_task"] = None
-    globals()["_shutdown_event"] = None
-    # Give more time for cleanup
-    await asyncio.sleep(0.2)
+    # Clear any global state
+    try:
+        globals()["_task"] = None
+        globals()["_shutdown_event"] = None
+    except:
+        pass
+    # Minimal delay
+    await asyncio.sleep(0.01)
 
 
 class TestEmbeddedWorkerSync:

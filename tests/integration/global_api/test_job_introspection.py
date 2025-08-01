@@ -8,20 +8,12 @@ retry failed ones, cancel long-running ones, etc. Real-world stuff that matters.
 import pytest
 
 import fastjob
-from tests.db_utils import create_test_database, drop_test_database, clear_table
-from fastjob.db.connection import get_pool, close_pool
 
 
 async def process_test_jobs():
-    """Helper to process jobs from all test queues"""
-    from fastjob.core.processor import process_jobs
-
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Process all relevant queues used in tests
-        await process_jobs(conn, queue="test")
-        await process_jobs(conn, queue="unique_test")
-        await process_jobs(conn, queue="priority_test")
+    """Helper to process jobs from all test queues using global API"""
+    # Use the global API worker to process jobs from all relevant test queues
+    await fastjob.run_worker(run_once=True, queues=["test", "unique_test", "priority_test", "default"])
 
 
 # Set up test environment
@@ -49,24 +41,13 @@ async def priority_task(data: str):
 class TestJobIntrospection:
     """Test job status and introspection features"""
 
-    @pytest.fixture(autouse=True)
-    async def setup_database(self):
-        """Set up test database"""
-        await close_pool()  # Close any existing pool
-        await create_test_database()
-        pool = await get_pool()
-        await clear_table(pool)  # Clear table before each test
-        yield
-        await close_pool()  # Ensure clean shutdown
-        await drop_test_database()
+    # Database setup handled by conftest.py
 
     @pytest.mark.asyncio
     async def test_get_job_status_existing_job(self):
         """Getting status for a job that exists should work as expected"""
 
-        # Clear the table to prevent unique constraint violations
-        pool = await get_pool()
-        await clear_table(pool)
+        # Table clearing handled by conftest.py
 
         # Put a job in the queue
         job_id = await fastjob.enqueue(simple_task, message="test")
@@ -78,7 +59,7 @@ class TestJobIntrospection:
         assert status is not None
         assert status["id"] == job_id
         # Job name includes the full module path
-        expected_job_name = "tests.integration.test_job_introspection.simple_task"
+        expected_job_name = "tests.integration.global_api.test_job_introspection.simple_task"
         assert status["job_name"] == expected_job_name
         assert status["status"] == "queued"
         assert status["queue"] == "test"
@@ -191,16 +172,7 @@ class TestJobIntrospection:
 class TestJobListing:
     """Test job listing and filtering features"""
 
-    @pytest.fixture(autouse=True)
-    async def setup_database(self):
-        """Set up test database"""
-        await close_pool()  # Close any existing pool
-        await create_test_database()
-        pool = await get_pool()
-        await clear_table(pool)  # Clear table before each test
-        yield
-        await close_pool()  # Ensure clean shutdown
-        await drop_test_database()
+    # Database setup handled by conftest.py
 
     @pytest.mark.asyncio
     async def test_list_all_jobs(self):
@@ -239,19 +211,21 @@ class TestJobListing:
     @pytest.mark.asyncio
     async def test_list_jobs_by_status(self):
         """Test filtering jobs by status"""
-        # Enqueue jobs
-        job1 = await fastjob.enqueue(simple_task, message="queued_job")
-        job2 = await fastjob.enqueue(simple_task, message="process_job")
+        # Enqueue jobs - one will be processed, one scheduled for future
+        await fastjob.enqueue(simple_task, message="immediate_job")
+        from datetime import datetime, timedelta
+        future_time = datetime.now() + timedelta(hours=1)
+        await fastjob.enqueue(simple_task, message="future_job", scheduled_at=future_time)
 
-        # Process one job
+        # Process jobs - only immediate job should be processed
         await process_test_jobs()
 
-        # List queued jobs
+        # List queued jobs (should include the future job)
         queued_jobs = await fastjob.list_jobs(status="queued")
         assert len(queued_jobs) >= 1
         assert all(job["status"] == "queued" for job in queued_jobs)
 
-        # List done jobs
+        # List done jobs (should include the immediate job)
         done_jobs = await fastjob.list_jobs(status="done")
         assert len(done_jobs) >= 1
         assert all(job["status"] == "done" for job in done_jobs)
@@ -293,16 +267,7 @@ class TestJobListing:
 class TestUniqueJobs:
     """Test unique job functionality"""
 
-    @pytest.fixture(autouse=True)
-    async def setup_database(self):
-        """Set up test database"""
-        await close_pool()  # Close any existing pool
-        await create_test_database()
-        pool = await get_pool()
-        await clear_table(pool)  # Clear table before each test
-        yield
-        await close_pool()  # Ensure clean shutdown
-        await drop_test_database()
+    # Database setup handled by conftest.py
 
     @pytest.mark.asyncio
     async def test_unique_job_prevention(self):
@@ -356,9 +321,7 @@ class TestUniqueJobs:
     @pytest.mark.asyncio
     async def test_non_unique_job_allows_duplicates(self):
         """Test that non-unique jobs allow duplicates"""
-        # Clear the table to prevent conflicts with previous tests
-        pool = await get_pool()
-        await clear_table(pool)
+        # Table clearing handled by conftest.py
 
         # Enqueue same non-unique job twice
         job1 = await fastjob.enqueue(simple_task, message="same_message")
@@ -390,16 +353,7 @@ class TestUniqueJobs:
 class TestQueueStats:
     """Test queue statistics functionality"""
 
-    @pytest.fixture(autouse=True)
-    async def setup_database(self):
-        """Set up test database"""
-        await close_pool()  # Close any existing pool
-        await create_test_database()
-        pool = await get_pool()
-        await clear_table(pool)  # Clear table before each test
-        yield
-        await close_pool()  # Ensure clean shutdown
-        await drop_test_database()
+    # Database setup handled by conftest.py
 
     @pytest.mark.asyncio
     async def test_empty_queue_stats(self):
@@ -431,13 +385,13 @@ class TestQueueStats:
         # Check test queue stats
         test_queue = next((q for q in stats if q["queue"] == "test"), None)
         assert test_queue is not None
-        assert test_queue["total_jobs"] >= 3
+        assert test_queue["total"] >= 3
         assert test_queue["cancelled"] >= 1
 
         # Check priority_test queue stats
         priority_queue = next((q for q in stats if q["queue"] == "priority_test"), None)
         assert priority_queue is not None
-        assert priority_queue["total_jobs"] >= 1
+        assert priority_queue["total"] >= 1
 
     @pytest.mark.asyncio
     async def test_queue_stats_structure(self):
@@ -451,10 +405,10 @@ class TestQueueStats:
         queue_stat = stats[0]
         required_fields = [
             "queue",
-            "total_jobs",
+            "total",
             "queued",
+            "processing",
             "done",
-            "failed",
             "dead_letter",
             "cancelled",
         ]
@@ -468,15 +422,15 @@ class TestQueueStats:
 
         # Count fields should be integers
         count_fields = [
-            "total_jobs",
+            "total",
             "queued",
+            "processing",
             "done",
-            "failed",
             "dead_letter",
             "cancelled",
         ]
         for field in count_fields:
             assert isinstance(queue_stat[field], int)
 
-        assert queue_stat["total_jobs"] == 1
+        assert queue_stat["total"] == 1
         assert queue_stat["queued"] == 1

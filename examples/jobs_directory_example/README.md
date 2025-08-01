@@ -1,6 +1,6 @@
 # Jobs Directory Example
 
-This example demonstrates FastJob's automatic job discovery feature - the **zero-configuration** approach to organizing background jobs.
+This example shows FastJob's automatic job discovery feature - the **zero-configuration** way to organize background jobs.
 
 ## Project Structure
 

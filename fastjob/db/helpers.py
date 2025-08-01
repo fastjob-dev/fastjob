@@ -5,9 +5,8 @@ This module provides common patterns for database operations to reduce the
 135+ repeated 'async with pool.acquire() as conn:' patterns across the codebase.
 """
 
-import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, List, Optional, TypeVar
 from contextlib import asynccontextmanager
 
 import asyncpg

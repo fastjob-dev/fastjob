@@ -21,7 +21,7 @@ import logging
 from typing import Optional
 
 from fastjob.core.processor import process_jobs
-from fastjob.db.connection import get_pool
+from fastjob.db.context import get_context_pool
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ async def _run_embedded_worker_loop(
     _shutdown_event = asyncio.Event()
 
     # Get a pool for this event loop
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     # If no queues specified, discover all queues from database
     if queues is None:

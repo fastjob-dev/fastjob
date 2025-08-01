@@ -10,7 +10,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
-from .db.connection import get_pool
 
 
 class HealthStatus(Enum):
@@ -224,35 +223,37 @@ _health_monitor = HealthMonitor()
 
 async def check_database_health() -> Tuple[HealthStatus, str]:
     """Check database connectivity and basic operations."""
-    from fastjob.db.helpers import fetchval
+    from fastjob.db.context import get_context_pool
     
     try:
-        # Test basic connectivity
-        result = await fetchval("SELECT 1")
-        if result != 1:
-            return (
-                HealthStatus.UNHEALTHY,
-                "Database query returned unexpected result",
-            )
+        pool = await get_context_pool()
+        async with pool.acquire() as conn:
+            # Test basic connectivity
+            result = await conn.fetchval("SELECT 1")
+            if result != 1:
+                return (
+                    HealthStatus.UNHEALTHY,
+                    "Database query returned unexpected result",
+                )
 
-        # Test FastJob tables exist
-        tables_exist = await fetchval(
+            # Test FastJob tables exist
+            tables_exist = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_name = 'fastjob_jobs'
             """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_name = 'fastjob_jobs'
-        """
-        )
-
-        if tables_exist == 0:
-            return (
-                HealthStatus.UNHEALTHY,
-                "FastJob tables not found - run migrations",
             )
 
-        # Test job queue operations
-        job_count = await fetchval("SELECT COUNT(*) FROM fastjob_jobs")
+            if tables_exist == 0:
+                return (
+                    HealthStatus.UNHEALTHY,
+                    "FastJob tables not found - run migrations",
+                )
 
-        return HealthStatus.HEALTHY, f"Database healthy, {job_count} jobs in queue"
+            # Test job queue operations
+            job_count = await conn.fetchval("SELECT COUNT(*) FROM fastjob_jobs")
+
+            return HealthStatus.HEALTHY, f"Database healthy, {job_count} jobs in queue"
 
     except Exception as e:
         return HealthStatus.UNHEALTHY, f"Database check failed: {str(e)}"
@@ -260,61 +261,63 @@ async def check_database_health() -> Tuple[HealthStatus, str]:
 
 async def check_job_processing_health() -> Tuple[HealthStatus, str]:
     """Check job processing health by looking at recent activity."""
-    from fastjob.db.helpers import fetchval
+    from fastjob.db.context import get_context_pool
     
     try:
-        # Check for stuck jobs
-        stuck_jobs = await fetchval(
+        pool = await get_context_pool()
+        async with pool.acquire() as conn:
+            # Check for stuck jobs
+            stuck_jobs = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM fastjob_jobs
+                WHERE status = 'queued'
+                AND created_at < NOW() - INTERVAL '1 hour'
+                AND (scheduled_at IS NULL OR scheduled_at < NOW() - INTERVAL '1 hour')
             """
-            SELECT COUNT(*) FROM fastjob_jobs
-            WHERE status = 'queued'
-            AND created_at < NOW() - INTERVAL '1 hour'
-            AND (scheduled_at IS NULL OR scheduled_at < NOW() - INTERVAL '1 hour')
-        """
-        )
+            )
 
-        from fastjob.settings import get_settings
-        settings = get_settings()
-        
-        if stuck_jobs > settings.stuck_jobs_threshold:
-            return HealthStatus.DEGRADED, f"{stuck_jobs} jobs may be stuck in queue"
+            from fastjob.settings import get_settings
+            settings = get_settings()
+            
+            if stuck_jobs > settings.stuck_jobs_threshold:
+                return HealthStatus.DEGRADED, f"{stuck_jobs} jobs may be stuck in queue"
 
-        # Check for recent processing activity
-        recent_activity = await fetchval(
+            # Check for recent processing activity
+            recent_activity = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM fastjob_jobs
+                WHERE updated_at > NOW() - INTERVAL '5 minutes'
             """
-            SELECT COUNT(*) FROM fastjob_jobs
-            WHERE updated_at > NOW() - INTERVAL '5 minutes'
-        """
-        )
+            )
 
-        # Check failed job rate
-        failed_jobs = await fetchval(
+            # Check failed job rate
+            failed_jobs = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM fastjob_jobs
+                WHERE status = 'failed'
+                AND updated_at > NOW() - INTERVAL '1 hour'
             """
-            SELECT COUNT(*) FROM fastjob_jobs
-            WHERE status = 'failed'
-            AND updated_at > NOW() - INTERVAL '1 hour'
-        """
-        )
+            )
 
-        total_recent_jobs = await fetchval(
+            total_recent_jobs = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM fastjob_jobs
+                WHERE updated_at > NOW() - INTERVAL '1 hour'
             """
-            SELECT COUNT(*) FROM fastjob_jobs
-            WHERE updated_at > NOW() - INTERVAL '1 hour'
-        """
-        )
+            )
 
-        if total_recent_jobs > 0:
-            failure_rate = (failed_jobs / total_recent_jobs) * 100
-            if failure_rate > settings.job_failure_rate_threshold:
-                return (
-                    HealthStatus.DEGRADED,
-                    f"High failure rate: {failure_rate:.1f}%",
-                )
+            if total_recent_jobs > 0:
+                failure_rate = (failed_jobs / total_recent_jobs) * 100
+                if failure_rate > settings.job_failure_rate_threshold:
+                    return (
+                        HealthStatus.DEGRADED,
+                        f"High failure rate: {failure_rate:.1f}%",
+                    )
 
-        return (
-            HealthStatus.HEALTHY,
-            f"Job processing healthy, {recent_activity} recent updates",
-        )
+            return (
+                HealthStatus.HEALTHY,
+                f"Job processing healthy, {recent_activity} recent updates",
+            )
 
     except Exception as e:
         return HealthStatus.UNHEALTHY, f"Job processing check failed: {str(e)}"
@@ -418,21 +421,23 @@ async def is_ready() -> bool:
     Returns:
         True if ready, False otherwise
     """
-    from fastjob.db.helpers import fetchval
+    from fastjob.db.context import get_context_pool
     
     try:
-        # Check database connectivity
-        await fetchval("SELECT 1")
+        pool = await get_context_pool()
+        async with pool.acquire() as conn:
+            # Check database connectivity
+            await conn.fetchval("SELECT 1")
 
-        # Check that FastJob tables exist
-        tables_exist = await fetchval(
+            # Check that FastJob tables exist
+            tables_exist = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_name = 'fastjob_jobs'
             """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_name = 'fastjob_jobs'
-        """
-        )
+            )
 
-        return tables_exist > 0
+            return tables_exist > 0
 
     except Exception:
         return False

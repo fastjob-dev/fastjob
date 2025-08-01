@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-FastJob Test Runner - Runs tests in organized batches to ensure stability
+FastJob Test Runner - Runs tests in organized batches with API isolation
 
-This script runs tests in smaller, logical groups to avoid test isolation issues
-while ensuring all functionality is properly tested.
+This script runs tests in the new isolated structure:
+- Global API tests: Use fastjob.job, fastjob.enqueue, etc.
+- Instance API tests: Use app = FastJob(), app.job, etc.  
+- Infrastructure tests: Test underlying systems (CLI, connections, etc.)
+- Unit tests: Test individual modules
 """
 import subprocess
 import sys
@@ -33,73 +36,96 @@ def run_test_batch(name, test_paths, verbose=True):
 
 
 def main():
-    """Run all test batches"""
+    """Run all test batches with new API isolation structure"""
     print("🚀 FastJob Comprehensive Test Suite")
-    print("Running tests in organized batches for maximum reliability...")
+    print("Running tests with API isolation for maximum reliability...")
 
     # Change to the script's directory (should be the fastjob root)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
     print(f"📁 Running tests from: {script_dir}")
 
-    # Define test batches
+    # Define test batches with new structure
     test_batches = [
+        # GLOBAL API TESTS - Use fastjob.job, fastjob.enqueue, etc.
         (
-            "Core Functionality",
+            "Global API - Job Management & Introspection",
+            ["tests/integration/global_api/test_job_introspection.py"],
+        ),
+        (
+            "Global API - Corrupted Data Handling",
+            ["tests/integration/global_api/test_corrupted_data_handling.py"],
+        ),
+        (
+            "Global API - Edge Cases",
+            ["tests/integration/global_api/test_edge_cases.py"],
+        ),
+        (
+            "Global API - Error Handling Edge Cases",
+            ["tests/integration/global_api/test_error_handling_edge_cases.py"],
+        ),
+        (
+            "Global API - Embedded Worker System",
+            ["tests/integration/global_api/test_embedded_worker.py"],
+        ),
+        (
+            "Global API - Production Scenarios",
+            ["tests/integration/global_api/test_production_scenarios.py"],
+        ),
+        (
+            "Global API - Scheduling & Timing",
+            ["tests/integration/global_api/test_scheduling.py"],
+        ),
+        (
+            "Global API - Specification Compliance",
+            ["tests/integration/global_api/test_specification_compliance.py"],
+        ),
+        (
+            "Global API - TTL & Job Cleanup",
+            ["tests/integration/global_api/test_ttl_functionality.py"],
+        ),
+        
+        # INSTANCE API TESTS - Use app = FastJob(), app.job, etc.
+        (
+            "Instance API - Core Functionality",
+            ["tests/integration/instance_api/test_core.py"],
+        ),
+        (
+            "Instance API - Worker Heartbeat System",
+            ["tests/integration/instance_api/test_worker_heartbeat.py"],
+        ),
+        (
+            "Instance API - Worker Heartbeat Comprehensive",
+            ["tests/integration/instance_api/test_worker_heartbeat_comprehensive.py"],
+        ),
+        
+        # INFRASTRUCTURE TESTS - Support both APIs
+        (
+            "Infrastructure - CLI Integration",
             [
-                "tests/integration/test_core.py",
-                "tests/integration/test_connection_context.py",
-                "tests/integration/test_edge_cases.py",
+                "tests/integration/infrastructure/test_cli_integration.py",
+                "tests/integration/infrastructure/test_cli_queue_behavior.py",
+                "tests/integration/infrastructure/test_complete_cli_plugin_integration.py",
             ],
         ),
         (
-            "CLI Integration",
-            [
-                "tests/integration/test_cli_integration.py",
-                "tests/integration/test_complete_cli_plugin_integration.py",
-                "tests/integration/test_cli_queue_behavior.py",
-            ],
+            "Infrastructure - Database URL Integration",
+            ["tests/integration/test_database_url_integration.py"],
         ),
         (
-            "Job Management & Introspection",
-            ["tests/integration/test_job_introspection.py"],
-        ),
-        ("Embedded Worker System", ["tests/integration/test_embedded_worker.py"]),
-        ("Production Scenarios", ["tests/integration/test_production_scenarios.py"]),
-        ("Scheduling & Timing", ["tests/integration/test_scheduling.py"]),
-        ("LISTEN/NOTIFY Performance", ["tests/integration/test_listen_notify.py"]),
-        (
-            "Queue Processing Behavior",
-            [
-                "tests/integration/test_queue_processing_behavior.py",
-            ],
+            "Infrastructure - Connection Context",
+            ["tests/integration/infrastructure/test_connection_context.py"],
         ),
         (
-            "TTL & Job Cleanup",
-            [
-                "tests/integration/test_ttl_functionality.py",
-            ],
+            "Infrastructure - LISTEN/NOTIFY Performance", 
+            ["tests/integration/infrastructure/test_listen_notify.py"],
         ),
         (
-            "Worker Heartbeat System",
-            [
-                "tests/integration/test_worker_heartbeat.py",
-            ],
+            "Infrastructure - Queue Processing Behavior",
+            ["tests/integration/infrastructure/test_queue_processing_behavior.py"],
         ),
-        (
-            "Corrupted Data Handling",
-            [
-                "tests/integration/test_corrupted_data_handling.py",
-            ],
-        ),
-        (
-            "Specification Compliance",
-            ["tests/integration/test_specification_compliance.py"],
-        ),
-        (
-            "Error Handling Edge Cases",
-            ["tests/integration/test_error_handling_edge_cases.py"],
-        ),
+        
+        # UNIT TESTS
         (
             "Unit Tests - Core Modules",
             [
@@ -114,6 +140,7 @@ def main():
                 "tests/unit/test_cli_plugin_system.py",
                 "tests/unit/test_configuration.py",
                 "tests/unit/test_plugin_loading_control.py",
+                "tests/unit/test_global_api.py",
             ],
         ),
     ]

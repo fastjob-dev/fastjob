@@ -216,7 +216,6 @@ class ReleaseManager:
 
     def publish_package(self) -> bool:
         """Publish package to PyPI"""
-        repository = "testpypi" if self.test_pypi else "pypi"
         print(f"\n🚀 Publishing to {'Test ' if self.test_pypi else ''}PyPI...")
 
         if self.dry_run:

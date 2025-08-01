@@ -345,11 +345,9 @@ async def test_database_context_exception_handling():
     # Reset global state
     await close_pool()
 
-    pool_ref = None
 
     try:
-        async with DatabaseContext() as pool:
-            pool_ref = pool
+        async with DatabaseContext():
             # Simulate an exception
             raise ValueError("Test exception")
     except ValueError:

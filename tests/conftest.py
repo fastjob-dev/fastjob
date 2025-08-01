@@ -2,7 +2,7 @@ import asyncio
 import pytest
 import os
 from tests.db_utils import create_test_database, clear_table
-from fastjob.db.connection import get_pool, close_pool
+from fastjob.db.connection import close_pool
 
 # Ensure test database URL is set
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
@@ -32,15 +32,19 @@ async def clean_test_state():
 
     # Clean up any existing connections
     await close_pool()
+    
+    # Configure global FastJob app to use test database consistently
+    import fastjob
+    fastjob.configure(database_url="postgresql://postgres@localhost/fastjob_test")
 
-    # Don't clear job registry - let tests manage their own jobs
-    # clear_registry()  # This causes issues with job re-registration
-
-    # Get fresh pool and clear any existing jobs
-    pool = await get_pool()
-    await clear_table(pool)
+    # Get fresh pool and clear any existing jobs (use global app's pool for consistency)
+    global_app = fastjob._get_global_app()
+    app_pool = await global_app.get_pool()
+    await clear_table(app_pool)
 
     yield
 
-    # Clean up after test
+    # Clean up after test - close both pools
     await close_pool()
+    if global_app.is_initialized:
+        await global_app.close()

@@ -100,7 +100,8 @@ class TestPluginLoadingControl:
         import fastjob
 
         # These should work without triggering plugin loading
-        settings = fastjob.get_settings()
+        from fastjob.settings import get_settings
+        settings = get_settings()
         assert settings is not None
 
         # Job decorator should work
