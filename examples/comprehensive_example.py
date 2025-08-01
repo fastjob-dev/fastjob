@@ -358,9 +358,9 @@ async def main():
     print("\n" + "="*60)
     print("SUMMARY")
     print("="*60)
-    print("✅ Global API: Perfect for single-service applications")
-    print("✅ Instance API: Perfect for microservices and multi-tenant apps")
-    print("✅ Both APIs demonstrated successfully!")
+    print("✅ Global API: Great for single-service apps")
+    print("✅ Instance API: Great for microservices and multi-tenant apps")
+    print("✅ Both APIs working!")
     
     print("\n✅ Comprehensive example completed!")
     print("\nAPI Comparison:")
