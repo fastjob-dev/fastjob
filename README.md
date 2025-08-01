@@ -16,6 +16,8 @@ It's the job queue for developers who believe simple is beautiful.
 | **Development**      | Separate worker process   | Separate worker process | ✅ Embedded in your app    |
 | **Type Safety**      | Manual validation         | Manual validation       | ✅ Automatic with Pydantic |
 | **Async Support**    | Limited/clunky            | None (sync only)        | ✅ Native asyncio          |
+| **Microservices**    | Complex routing config    | Manual queue separation | ✅ Instance API (separate DBs) |
+| **Multi-Tenant**     | Manual tenant isolation   | No built-in support     | ✅ Database-per-tenant isolation |
 | **Web Dashboard**    | Flower (separate install) | Basic (separate)        | ✅ Built-in (Pro)          |
 | **Job Scheduling**   | Celery Beat (complex)     | External cron needed    | ✅ Built-in (Pro)          |
 | **Learning Curve**   | Steep                     | Moderate                | ✅ Gentle                  |
