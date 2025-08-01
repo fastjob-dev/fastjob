@@ -3,17 +3,227 @@ Job queue operations - the heart of FastJob
 
 This handles everything related to putting jobs in the queue and managing them.
 The goal is to make it feel natural and reliable for developers.
+
+Supports both instance-based operations (with FastJobApp) and global operations
+for backward compatibility.
 """
 
 import json
+import time
 import uuid
-from typing import Callable, Any, Optional, Dict, List, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 from pydantic import ValidationError
+import asyncpg
 
-from fastjob.core.registry import get_job
+from fastjob.core.registry import JobRegistry
 from fastjob.db.connection import get_pool
+from fastjob.db.context import get_context_pool
+from fastjob.utils.hashing import compute_args_hash
+
+if TYPE_CHECKING:
+    from fastjob.core.registry import JobRegistry
+
+
+def _validate_job_arguments(job_name: str, job_meta: dict, kwargs: dict) -> None:
+    """
+    Validate job arguments against the job's Pydantic model.
+    
+    Args:
+        job_name: Name of the job function
+        job_meta: Job metadata from registry
+        kwargs: Arguments to validate
+        
+    Raises:
+        ValueError: If arguments are invalid
+    """
+    args_model = job_meta.get("args_model")
+    if args_model:
+        try:
+            args_model(**kwargs)  # Validate arguments
+        except ValidationError as e:
+            raise ValueError(f"Invalid arguments for job {job_name}: {e}") from e
+
+
+def _normalize_scheduled_time(scheduled_at: Optional[Union[datetime, int, float, timedelta]]) -> Optional[datetime]:
+    """
+    Normalize scheduled_at to be timezone-naive in UTC.
+    
+    Args:
+        scheduled_at: Optional datetime, timedelta, or seconds from now (int/float) to normalize
+        
+    Returns:
+        Normalized datetime or None
+    """
+    if not scheduled_at:
+        return None
+    
+    # Handle timedelta values (add to current time)
+    if isinstance(scheduled_at, timedelta):
+        return datetime.now(timezone.utc).replace(tzinfo=None) + scheduled_at
+    
+    # Handle numeric values (seconds from now)
+    if isinstance(scheduled_at, (int, float)):
+        return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=scheduled_at)
+        
+    if scheduled_at.tzinfo is not None:
+        # Convert timezone-aware datetime to UTC
+        return scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+    else:
+        # For timezone-naive datetime, assume it's in local time and convert to UTC
+        # Get the local timezone offset and apply it to get UTC
+        # Get timezone offset in seconds (accounts for DST)
+        is_dst = time.daylight and time.localtime().tm_isdst
+        offset_seconds = time.altzone if is_dst else time.timezone
+        # timezone/altzone gives seconds west of UTC (negative for east)
+        # To convert local time to UTC, we add this offset (which is negative for eastern timezones)
+        offset_delta = timedelta(seconds=offset_seconds)
+        return scheduled_at + offset_delta
+
+
+async def _handle_unique_job_check(conn, job_name: str, args_hash: str) -> Optional[str]:
+    """
+    Check for existing unique job and return its ID if found.
+    
+    Args:
+        conn: Database connection
+        job_name: Name of the job function
+        args_hash: Hash of job arguments
+        
+    Returns:
+        Existing job ID if found, None otherwise
+    """
+    existing_job = await conn.fetchrow(
+        """
+        SELECT id FROM fastjob_jobs
+        WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
+    """,
+        job_name,
+        args_hash,
+    )
+    
+    if existing_job:
+        return str(existing_job["id"])
+    return None
+
+
+async def _create_job_record(
+    conn,
+    job_id: str,
+    job_name: str,
+    job_meta: dict,
+    args_json: str,
+    args_hash: Optional[str],
+    final_priority: int,
+    final_queue: str,
+    final_unique: bool,
+    scheduled_at: Optional[datetime],
+) -> None:
+    """
+    Create a new job record in the database.
+    
+    Args:
+        conn: Database connection
+        job_id: Generated job ID
+        job_name: Name of the job function
+        job_meta: Job metadata from registry
+        args_json: JSON-serialized arguments
+        args_hash: Hash of arguments for uniqueness
+        final_priority: Final priority value
+        final_queue: Final queue name
+        final_unique: Whether job is unique
+        scheduled_at: When to execute the job
+    """
+    await conn.execute(
+        """
+        INSERT INTO fastjob_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    """,
+        uuid.UUID(job_id),
+        job_name,
+        args_json,
+        args_hash,
+        job_meta["retries"] + 1,  # max_attempts = retries + 1 (original attempt + retries)
+        final_priority,
+        final_queue,
+        final_unique,
+        scheduled_at,
+    )
+
+    # Notify workers about the new job for instant processing
+    await conn.execute(f"NOTIFY fastjob_new_job, '{final_queue}'")
+
+
+async def enqueue_job(
+    pool: asyncpg.Pool,
+    job_registry: JobRegistry,
+    job_func: Callable[..., Any],
+    priority: Optional[int] = None,
+    queue: Optional[str] = None,
+    scheduled_at: Optional[datetime] = None,
+    unique: Optional[bool] = None,
+    **kwargs,
+) -> str:
+    """
+    Instance-based job enqueuing.
+    
+    Enqueue a job using specific pool and registry instances.
+    
+    Args:
+        pool: Database connection pool
+        job_registry: Job registry instance
+        job_func: The decorated job function to enqueue
+        priority: Job priority (lower number = higher priority). If None, uses job default
+        queue: Queue name. If None, uses job default
+        scheduled_at: When to execute the job. If None, executes immediately
+        unique: Override job's unique setting. If True, prevents duplicate queued jobs
+        **kwargs: Arguments to pass to the job function
+        
+    Returns:
+        str: The job ID, or existing job ID if unique job already exists
+        
+    Raises:
+        ValueError: If job is not registered or arguments are invalid
+    """
+    # Get job metadata from instance registry
+    job_name = f"{job_func.__module__}.{job_func.__name__}"
+    job_meta = job_registry.get_job(job_name)
+    
+    if not job_meta:
+        raise ValueError(f"Job {job_name} is not registered in the provided registry")
+    
+    # Call the refactored helper functions
+    _validate_job_arguments(job_name, job_meta, kwargs)
+    
+    # Override job settings with provided parameters
+    final_priority = priority if priority is not None else job_meta["priority"]
+    final_queue = queue if queue is not None else job_meta["queue"]
+    final_unique = unique if unique is not None else job_meta["unique"]
+    scheduled_at = _normalize_scheduled_time(scheduled_at)
+    
+    # Handle unique job checking
+    if final_unique:
+        args_hash = compute_args_hash(kwargs)
+        async with pool.acquire() as conn:
+            existing_job_id = await _handle_unique_job_check(
+                conn, job_name, args_hash
+            )
+            if existing_job_id:
+                return existing_job_id
+    
+    # Create and insert job record
+    job_id = str(uuid.uuid4())
+    args_json = json.dumps(kwargs, default=str)
+    args_hash = compute_args_hash(kwargs) if final_unique else None
+    
+    async with pool.acquire() as conn:
+        await _create_job_record(
+            conn, job_id, job_name, job_meta, args_json, args_hash,
+            final_priority, final_queue, final_unique, scheduled_at
+        )
+    
+    return job_id
 
 
 async def enqueue(
@@ -25,7 +235,10 @@ async def enqueue(
     **kwargs,
 ) -> str:
     """
-    Enqueue a job for processing.
+    Global enqueue function for backward compatibility.
+    
+    Uses global pool and registry. For new code, prefer using
+    FastJobApp.enqueue() for better isolation and testability.
 
     Args:
         job_func: The decorated job function to enqueue
@@ -41,93 +254,27 @@ async def enqueue(
     Raises:
         ValueError: If job is not registered or arguments are invalid
     """
-    job_name = f"{job_func.__module__}.{job_func.__name__}"
-    job_meta = get_job(job_name)
-    if not job_meta:
-        raise ValueError(f"Job {job_name} not registered.")
+    # Ensure plugins are loaded automatically
+    from fastjob import _ensure_plugins_loaded
+    from fastjob.core.registry import get_global_registry
 
-    # Validate arguments if model is specified
-    args_model = job_meta.get("args_model")
-    if args_model:
-        try:
-            args_model(**kwargs)  # Validate arguments
-        except ValidationError as e:
-            raise ValueError(f"Invalid arguments for job {job_name}: {e}") from e
+    _ensure_plugins_loaded()
 
-    # Figure out the final settings - use what the caller specified, otherwise use job defaults
-    final_priority = priority if priority is not None else job_meta["priority"]
-    final_queue = queue if queue is not None else job_meta["queue"]
-    final_unique = unique if unique is not None else job_meta["unique"]
+    # Delegate to instance-based function using global instances
+    pool = await get_context_pool()
+    registry = get_global_registry()
+    
+    return await enqueue_job(
+        pool=pool,
+        job_registry=registry,
+        job_func=job_func,
+        priority=priority,
+        queue=queue,
+        scheduled_at=scheduled_at,
+        unique=unique,
+        **kwargs
+    )
 
-    # Normalize scheduled_at to be timezone-naive in UTC if it's timezone-aware
-    if scheduled_at and scheduled_at.tzinfo is not None:
-        scheduled_at = scheduled_at.utctimetuple()
-        from datetime import datetime
-
-        scheduled_at = datetime(*scheduled_at[:6])
-
-    job_id = str(uuid.uuid4())
-    pool = await get_pool()
-
-    async with pool.acquire() as conn:
-        # For unique jobs, check if we already have this exact job queued
-        if final_unique:
-            existing_job = await conn.fetchrow(
-                """
-                SELECT id FROM fastjob_jobs 
-                WHERE job_name = $1 AND args = $2 AND status = 'queued' AND unique_job = TRUE
-            """,
-                job_name,
-                json.dumps(kwargs),
-            )
-
-            if existing_job:
-                return str(
-                    existing_job["id"]
-                )  # Return the existing job ID instead of creating a duplicate
-
-        try:
-            await conn.execute(
-                """
-                INSERT INTO fastjob_jobs (id, job_name, args, max_attempts, priority, queue, unique_job, scheduled_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            """,
-                uuid.UUID(job_id),
-                job_name,
-                json.dumps(kwargs),
-                job_meta["retries"] + 1,  # max_attempts = retries + 1 (original attempt + retries)
-                final_priority,
-                final_queue,
-                final_unique,
-                scheduled_at,
-            )
-
-            # Notify workers about the new job for instant processing
-            await conn.execute(f"NOTIFY fastjob_new_job, '{final_queue}'")
-
-        except Exception as e:
-            # Sometimes the database unique constraint catches duplicates we missed
-            if (
-                final_unique
-                and "duplicate key value violates unique constraint" in str(e)
-            ):
-                # Let's find the job that beat us to it
-                existing_job = await conn.fetchrow(
-                    """
-                    SELECT id FROM fastjob_jobs 
-                    WHERE job_name = $1 AND args = $2 AND status = 'queued' AND unique_job = TRUE
-                """,
-                    job_name,
-                    json.dumps(kwargs),
-                )
-
-                if existing_job:
-                    return str(existing_job["id"])
-
-            # If it's not a uniqueness issue, something else went wrong
-            raise
-
-    return job_id
 
 
 async def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
@@ -143,15 +290,15 @@ async def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dict with all the job details, or None if the job doesn't exist
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, job_name, args, status, attempts, max_attempts, 
-                   queue, priority, scheduled_at, last_error, 
+            SELECT id, job_name, args, status, attempts, max_attempts,
+                   queue, priority, scheduled_at, last_error,
                    created_at, updated_at
-            FROM fastjob_jobs 
+            FROM fastjob_jobs
             WHERE id = $1
         """,
             uuid.UUID(job_id),
@@ -191,13 +338,13 @@ async def cancel_job(job_id: str) -> bool:
     Returns:
         True if we cancelled it, False if we couldn't (maybe it doesn't exist or already started)
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         # Only allow cancelling queued jobs
         result = await conn.execute(
             """
-            UPDATE fastjob_jobs 
+            UPDATE fastjob_jobs
             SET status = 'cancelled', updated_at = NOW()
             WHERE id = $1 AND status = 'queued'
         """,
@@ -218,13 +365,13 @@ async def retry_job(job_id: str) -> bool:
     Returns:
         bool: True if job was queued for retry, False if not found or not retryable
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         # Only allow retrying failed or dead letter jobs
         result = await conn.execute(
             """
-            UPDATE fastjob_jobs 
+            UPDATE fastjob_jobs
             SET status = 'queued', attempts = 0, last_error = NULL, updated_at = NOW()
             WHERE id = $1 AND status IN ('failed', 'dead_letter')
         """,
@@ -244,7 +391,7 @@ async def delete_job(job_id: str) -> bool:
     Returns:
         bool: True if job was deleted, False if not found
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         result = await conn.execute(
@@ -305,10 +452,10 @@ async def list_jobs(
     params.append(offset)
 
     query = f"""
-        SELECT id, job_name, args, status, attempts, max_attempts, 
-               queue, priority, scheduled_at, last_error, 
+        SELECT id, job_name, args, status, attempts, max_attempts,
+               queue, priority, scheduled_at, last_error,
                created_at, updated_at
-        FROM fastjob_jobs 
+        FROM fastjob_jobs
         {where_clause}
         ORDER BY created_at DESC
         LIMIT {limit_param} OFFSET {offset_param}
@@ -345,12 +492,12 @@ async def get_queue_stats() -> List[Dict[str, Any]]:
     Returns:
         List of dictionaries with queue statistics
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT 
+            SELECT
                 queue,
                 COUNT(*) as total_jobs,
                 COUNT(*) FILTER (WHERE status = 'queued') as queued,
@@ -358,7 +505,7 @@ async def get_queue_stats() -> List[Dict[str, Any]]:
                 COUNT(*) FILTER (WHERE status = 'failed') as failed,
                 COUNT(*) FILTER (WHERE status = 'dead_letter') as dead_letter,
                 COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
-            FROM fastjob_jobs 
+            FROM fastjob_jobs
             GROUP BY queue
             ORDER BY queue
         """
@@ -411,7 +558,7 @@ async def schedule(
 
         # Schedule in 2 hours using timedelta (positional)
         await schedule(my_job, timedelta(hours=2))
-        
+
         # Using keyword arguments
         await schedule(my_job, run_at=datetime(2025, 1, 15, 9, 0))
         await schedule(my_job, run_in=30)
@@ -420,7 +567,7 @@ async def schedule(
     if when is not None:
         if run_at is not None or run_in is not None:
             raise ValueError("Cannot use 'when' parameter with 'run_at' or 'run_in'")
-        
+
         if isinstance(when, datetime):
             scheduled_time = when
         elif isinstance(when, (int, float)):
@@ -428,7 +575,9 @@ async def schedule(
         elif isinstance(when, timedelta):
             scheduled_time = datetime.now() + when
         else:
-            raise ValueError(f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float")
+            raise ValueError(
+                f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float"
+            )
     else:
         # Use keyword arguments
         if run_at is not None and run_in is not None:

@@ -1,6 +1,6 @@
 # Jobs Directory Example
 
-This example demonstrates FastJob's automatic job discovery feature - the **zero-configuration** approach to organizing background jobs.
+This example shows FastJob's automatic job discovery feature - the **zero-configuration** way to organize background jobs.
 
 ## Project Structure
 
@@ -39,7 +39,7 @@ python app.py
 ### Method 2: External Worker (Production-like)
 
 ```bash
-# Terminal 1: Start worker process
+# Terminal 1: Start worker process (processes all queues by default)
 export FASTJOB_DATABASE_URL="postgresql://user:pass@localhost/myapp"
 fastjob worker --concurrency 2
 
@@ -85,8 +85,8 @@ FastJob will then look for jobs in `myapp/background_tasks/` instead of `jobs/`.
 
 ## Production Tips
 
-- **Use external workers** in production: `fastjob worker --concurrency 4`
-- **Separate queues** for different priorities: `--queues urgent,default,background`
+- **Use external workers** in production: `fastjob worker --concurrency 4` (processes all queues)
+- **Target specific queues** if needed: `fastjob worker --queues urgent,background --concurrency 4`
 - **Monitor with CLI**: `fastjob jobs list --status failed`
 - **Health checks**: `fastjob health --verbose`
 
