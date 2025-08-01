@@ -2,25 +2,25 @@
 
 **Because your background jobs shouldn't be a background worry.**
 
-You know the pain: spending hours wrestling with Celery's maze of configuration files, setting up Redis just to send an email, debugging why your development worker randomly stopped, or watching jobs vanish when Redis hiccups in production.
+If you've worked with background jobs in Python, you know the drill: install Redis, configure Celery, set up separate worker processes, debug sync/async compatibility issues, and hope your jobs don't disappear when something goes wrong.
 
-I built FastJob because I got tired of that complexity. Your PostgreSQL database is already bulletproof – why not use it for jobs too? FastJob is what happens when you prioritize developer happiness over enterprise feature checklists.
+I built FastJob with a different philosophy: your PostgreSQL database is already handling your app's most critical data reliably – why not use it for jobs too? FastJob prioritizes developer experience and simplicity over enterprise feature checklists.
 
 It's the job queue for developers who believe **simple is beautiful**.
 
-## FastJob vs The Reality You're Living
+## FastJob vs Established Solutions
 
-| Pain Point           | Celery                    | RQ                     | FastJob                    |
+| Aspect               | Celery                    | RQ                     | FastJob                    |
 | -------------------- | ------------------------- | ---------------------- | -------------------------- |
-| **Setup Nightmare**  | Redis / RabbitMQ setup    | Redis required         | ✅ Uses your PostgreSQL    |
-| **Dev Workflow**     | Separate worker process   | Separate process       | ✅ Embedded in your app    |
-| **Type Disasters**   | Runtime job failures      | Runtime failures       | ✅ Pydantic validation     |
-| **Async Hell**       | Sync/async impedance      | Sync-only (it's 2025!) | ✅ Native asyncio          |
-| **Microservices**    | Shared queues = chaos     | Manual separation      | ✅ Database per service    |
-| **Multi-Tenant**     | Manual isolation          | Not supported          | ✅ Database per tenant     |
-| **Monitoring**       | Flower (another service)  | Basic tools            | ✅ Built-in dashboard (Pro) |
-| **Scheduling**       | Celery Beat complexity    | External cron          | ✅ In-code cron (Pro)      |
-| **Learning Curve**   | Weeks to get right        | Days to understand     | ✅ Minutes to productivity |
+| **Infrastructure**   | Redis/RabbitMQ required   | Redis required         | ✅ Uses your PostgreSQL    |
+| **Development**      | Separate worker process   | Separate process       | ✅ Embedded in your app    |
+| **Type Safety**      | Manual validation         | Manual validation      | ✅ Automatic with Pydantic |
+| **Async Support**    | Requires compatibility layer | Sync-only design     | ✅ Native asyncio          |
+| **Microservices**    | Shared queue coordination | Manual queue separation | ✅ Database per service    |
+| **Multi-Tenant**     | Custom isolation logic   | Limited support        | ✅ Database per tenant     |
+| **Monitoring**       | Flower (separate service) | Basic CLI tools        | ✅ Built-in dashboard (Pro) |
+| **Scheduling**       | Celery Beat (additional component) | External cron needed | ✅ In-code definitions (Pro) |
+| **Getting Started**  | Significant setup time    | Moderate setup         | ✅ Minutes to first job    |
 
 ## The API You'll Actually Enjoy Using
 
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Run it:
+**To run this example:**
 ```bash
 # Terminal 1: Start worker
 fastjob start
@@ -120,9 +120,11 @@ python main.py
 
 **Watch your jobs process instantly.** No Redis setup. No configuration hell. Just working code.
 
-## Development vs Production: Same Code, Zero Complexity
+*Note: This example shows the production pattern with separate worker processes. In development, you can run jobs directly in your web server - see below.*
 
-The beautiful thing? Your job code never changes. Only the worker management does:
+## Development vs Production: Same Code, Different Worker Management
+
+Here's what makes FastJob special - your job code stays identical everywhere. The only difference is how you run the workers:
 
 ### Development: Everything Just Works
 
@@ -308,7 +310,7 @@ failed_jobs = await fastjob.list_jobs(status="failed", limit=10)
 
 ## CLI That Doesn't Fight You
 
-### Global API (Single Database)
+### Global API (Recommended for Most Apps)
 ```bash
 # Setup once
 fastjob setup
@@ -414,49 +416,48 @@ fastjob start --database-url="postgresql://localhost/user_service" --queues emai
 fastjob start --database-url="postgresql://localhost/billing_service" --queues payments,invoices --concurrency 4
 ```
 
-## Escape from Celery Hell
+## Migrating from Other Solutions
 
-### What You're Probably Dealing With Now
+### From Celery
+
+Celery is powerful and battle-tested, but can be complex for simpler use cases:
 
 ```python
-# Celery (the pain you know)
+# Celery approach
 from celery import Celery
 app = Celery('myapp', broker='redis://localhost:6379/0')
 
 @app.task(bind=True, autoretry_for=(Exception,), retry_kwargs={'max_retries': 3})
 def send_email(self, user_email, subject):
-    # No type safety, runtime failures
+    # Runtime parameter validation
     pass
 
-# Separate Redis setup, worker processes, configuration files...
+# Requires: Redis setup, separate worker processes, configuration files
 # celery -A myapp worker --loglevel=info
 ```
 
-### What You Get With FastJob
-
 ```python
-# FastJob (the relief you need)
+# FastJob approach
 import fastjob
 
 @fastjob.job(retries=3)
 async def send_email(user_email: str, subject: str):
-    # Type safety, clean async, no self parameter
+    # Built-in type validation, clean async
     pass
 
 # Development: fastjob.start_embedded_worker()
 # Production: fastjob start
 ```
 
-**The difference:**
-- ✅ **No Redis** - uses your reliable PostgreSQL
-- ✅ **No separate config** - everything in your Python code
-- ✅ **Type safety** - catch errors before jobs run
-- ✅ **Clean async** - no sync/async bridging hell
-- ✅ **Simple development** - jobs run in your web server process
+**Key differences:**
+- ✅ **No Redis dependency** - uses your existing PostgreSQL
+- ✅ **Embedded development mode** - no separate processes locally
+- ✅ **Type safety** - Pydantic validation built-in
+- ✅ **Native async** - no compatibility layers needed
 
 ## Framework Integration
 
-### FastAPI (Perfect Match)
+### FastAPI (Recommended)
 
 ```python
 from fastapi import FastAPI
@@ -515,9 +516,9 @@ def trigger():
     return {"status": "queued"}
 ```
 
-## Configuration (The Minimal Kind)
+## Configuration (Minimal by Design)
 
-FastJob works with almost zero configuration:
+FastJob works with almost zero configuration - this is intentional:
 
 ```bash
 # Required: Database connection (you probably already have this)
@@ -546,7 +547,8 @@ export FASTJOB_JOBS_MODULE="myapp.jobs"
 ```bash
 pip install -e ".[dev]"
 createdb fastjob_test
-python -m pytest tests/ -v
+python run_tests.py  # Recommended - organized test runner
+# or: python -m pytest tests/ -v
 ```
 
 ## Why I Built This
