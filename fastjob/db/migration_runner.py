@@ -11,7 +11,7 @@ from typing import List, Tuple
 
 import asyncpg
 
-from .connection import get_pool
+from .context import get_context_pool
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class MigrationRunner:
             Number of migrations applied
         """
         if conn is None:
-            pool = await get_pool()
+            pool = await get_context_pool()
             async with pool.acquire() as conn:
                 return await self._run_migrations_with_connection(conn)
         else:
@@ -193,7 +193,7 @@ class MigrationRunner:
             Dictionary with migration status information
         """
         if conn is None:
-            pool = await get_pool()
+            pool = await get_context_pool()
             async with pool.acquire() as conn:
                 return await self._get_migration_status_with_connection(conn)
         else:

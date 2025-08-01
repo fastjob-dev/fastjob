@@ -288,6 +288,24 @@ async def handle_setup_command(args):
 async def handle_migrate_status_command(args):
     """Handle migrate status command"""
     from fastjob.db.migration_runner import get_migration_status
+    from fastjob.db.context import DatabaseContext, set_current_context, clear_current_context
+    
+    # Resolve FastJob instance from CLI arguments
+    try:
+        fastjob_instance = await resolve_fastjob_instance(args)
+    except Exception as e:
+        print_status(f"Configuration error: {e}", "error")
+        return 1
+
+    # Set up database context
+    if fastjob_instance:
+        context = DatabaseContext.from_instance(fastjob_instance)
+        print_status(f"Using instance-based configuration: {fastjob_instance.settings.database_url}", "info")
+    else:
+        context = DatabaseContext.from_global_api()
+        print_status("Using global API configuration", "info")
+    
+    set_current_context(context)
 
     try:
         print_status("FastJob Database Migration Status", "info")
@@ -317,10 +335,13 @@ async def handle_migrate_status_command(args):
     except Exception as e:
         print_status(f"Failed to get migration status: {e}", "error")
         return 1
+    finally:
+        clear_current_context()
 
 
 async def handle_status_command(args):
     """Handle status command (health + jobs + queues functionality)"""
+    from fastjob.db.context import DatabaseContext, set_current_context, clear_current_context
     
     # Resolve FastJob instance from CLI arguments
     try:
@@ -329,28 +350,40 @@ async def handle_status_command(args):
         print_status(f"Configuration error: {e}", "error")
         return 1
 
-    print(f"\n{StatusIcon.rocket()} FastJob System Status")
-    
+    # Set up database context
     if fastjob_instance:
-        print_status(f"Using instance-based configuration (database: {fastjob_instance.settings.database_url})", "info")
+        context = DatabaseContext.from_instance(fastjob_instance)
+        print_status(f"Using instance-based configuration: {fastjob_instance.settings.database_url}", "info")
     else:
+        context = DatabaseContext.from_global_api()
         print_status("Using global API configuration", "info")
-
-    # 1. Health Check
+    
+    set_current_context(context)
+    
     try:
-        result = await fetchval("SELECT 1")
-        if result == 1:
-            print_status("Database connection: OK", "success")
-        else:
-            print_status("Database connection: FAILED", "error")
-            return 1
+        print(f"\n{StatusIcon.rocket()} FastJob System Status")
 
-    except Exception as e:
-        print_status(f"Health check failed: {e}", "error")
-        return 1
+        # 1. Health Check
+        try:
+            from fastjob.db.context import get_context_pool
+            pool = await get_context_pool()
+            async with pool.acquire() as conn:
+                result = await conn.fetchval("SELECT 1")
+                if result == 1:
+                    print_status("Database connection: OK", "success")
+                else:
+                    print_status("Database connection: FAILED", "error")
+                    return 1
+
+        except Exception as e:
+            print_status(f"Health check failed: {e}", "error")
+            return 1
+    finally:
+        clear_current_context()
 
     # 2. Queue Statistics
     try:
+        from fastjob.core.queue import get_queue_stats
         queues = await get_queue_stats()
         if queues:
             total_jobs = sum(q["total_jobs"] for q in queues)
@@ -506,12 +539,29 @@ async def handle_cli_debug_command(args):
 async def handle_workers_command(args):
     """Handle workers command (worker monitoring functionality)"""
     from fastjob.core.heartbeat import get_worker_status, cleanup_stale_workers
-    from fastjob.db.connection import get_pool
+    from fastjob.db.context import DatabaseContext, set_current_context, clear_current_context, get_context_pool
+    
+    # Resolve FastJob instance from CLI arguments
+    try:
+        fastjob_instance = await resolve_fastjob_instance(args)
+    except Exception as e:
+        print_status(f"Configuration error: {e}", "error")
+        return 1
 
-    print(f"\n{StatusIcon.workers()} FastJob Worker Status")
+    # Set up database context
+    if fastjob_instance:
+        context = DatabaseContext.from_instance(fastjob_instance)
+        print_status(f"Using instance-based configuration: {fastjob_instance.settings.database_url}", "info")
+    else:
+        context = DatabaseContext.from_global_api()
+        print_status("Using global API configuration", "info")
+    
+    set_current_context(context)
 
     try:
-        pool = await get_pool()
+        print(f"\n{StatusIcon.workers()} FastJob Worker Status")
+
+        pool = await get_context_pool()
 
         # Clean up stale workers if requested
         if args.cleanup:
@@ -593,3 +643,5 @@ async def handle_workers_command(args):
     except Exception as e:
         print_status(f"Failed to get worker status: {e}", "error")
         return 1
+    finally:
+        clear_current_context()

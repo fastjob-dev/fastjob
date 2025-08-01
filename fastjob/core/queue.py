@@ -19,6 +19,7 @@ import asyncpg
 
 from fastjob.core.registry import JobRegistry
 from fastjob.db.connection import get_pool
+from fastjob.db.context import get_context_pool
 from fastjob.utils.hashing import compute_args_hash
 
 if TYPE_CHECKING:
@@ -260,7 +261,7 @@ async def enqueue(
     _ensure_plugins_loaded()
 
     # Delegate to instance-based function using global instances
-    pool = await get_pool()
+    pool = await get_context_pool()
     registry = get_global_registry()
     
     return await enqueue_job(
@@ -289,7 +290,7 @@ async def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dict with all the job details, or None if the job doesn't exist
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -337,7 +338,7 @@ async def cancel_job(job_id: str) -> bool:
     Returns:
         True if we cancelled it, False if we couldn't (maybe it doesn't exist or already started)
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         # Only allow cancelling queued jobs
@@ -364,7 +365,7 @@ async def retry_job(job_id: str) -> bool:
     Returns:
         bool: True if job was queued for retry, False if not found or not retryable
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         # Only allow retrying failed or dead letter jobs
@@ -390,7 +391,7 @@ async def delete_job(job_id: str) -> bool:
     Returns:
         bool: True if job was deleted, False if not found
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         result = await conn.execute(
@@ -491,7 +492,7 @@ async def get_queue_stats() -> List[Dict[str, Any]]:
     Returns:
         List of dictionaries with queue statistics
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(

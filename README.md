@@ -47,7 +47,7 @@ Copy, paste, run. That's it.
 ```bash
 # Install and setup (30 seconds)
 pip install fastjob
-export FASTJOB_DATABASE_URL="postgresql://localhost/postgres"  # Use existing DB
+echo "FASTJOB_DATABASE_URL=postgresql://localhost/postgres" > .env
 fastjob setup
 ```
 
@@ -98,6 +98,152 @@ fastjob start --concurrency 4 --queues urgent,background
 ```
 
 Your job functions don't change. Your enqueue calls don't change. Nothing changes except how the workers run.
+
+## Instance API Setup (Microservices & Multi-Tenant)
+
+Need separate job queues for different services or tenants? FastJob's Instance API gives you complete isolation with zero complexity.
+
+### When to Use Instance API
+
+**Choose Instance API when you have:**
+- Microservices architecture with separate databases
+- Multi-tenant applications requiring data isolation  
+- Different job processing rules per service
+- Independent scaling requirements per service
+
+**Stick with Global API when you have:**
+- Single application with one job queue
+- Simple background job processing
+- Getting started with FastJob
+
+### Instance API Quickstart
+
+```bash
+# 1. Create separate databases for each service
+createdb user_service
+createdb payment_service
+createdb notification_service
+
+# 2. Setup each service database
+fastjob setup --database-url="postgresql://localhost/user_service"
+fastjob setup --database-url="postgresql://localhost/payment_service"  
+fastjob setup --database-url="postgresql://localhost/notification_service"
+```
+
+```python
+# 3. Create service-specific FastJob instances
+from fastjob import FastJob
+
+# Each service gets its own isolated job queue
+user_service = FastJob(database_url="postgresql://localhost/user_service")
+payment_service = FastJob(database_url="postgresql://localhost/payment_service")
+notification_service = FastJob(database_url="postgresql://localhost/notification_service")
+
+# Register jobs with specific services
+@user_service.job()
+async def process_user_signup(user_id: str, email: str):
+    print(f"Processing user signup: {email}")
+    # Only accesses user service database
+    return f"User {user_id} created"
+
+@payment_service.job()
+async def process_payment(payment_id: str, amount: float):
+    print(f"Processing payment: ${amount}")
+    # Only accesses payment service database  
+    return f"Payment {payment_id} processed"
+
+@notification_service.job()
+async def send_welcome_email(user_id: str, email: str):
+    print(f"Sending welcome email to: {email}")
+    # Only accesses notification service database
+    return f"Email sent to {email}"
+
+async def main():
+    # Enqueue jobs to specific services
+    user_job = await user_service.enqueue(
+        process_user_signup, 
+        user_id="123", 
+        email="user@example.com"
+    )
+    
+    payment_job = await payment_service.enqueue(
+        process_payment,
+        payment_id="pay_456", 
+        amount=99.99
+    )
+    
+    # Cross-service workflow
+    notification_job = await notification_service.enqueue(
+        send_welcome_email,
+        user_id="123",
+        email="user@example.com"
+    )
+    
+    print(f"Jobs queued: {user_job}, {payment_job}, {notification_job}")
+```
+
+```bash
+# 4. Run workers for each service (production)
+fastjob worker --database-url="postgresql://localhost/user_service" --concurrency 2
+fastjob worker --database-url="postgresql://localhost/payment_service" --concurrency 1  
+fastjob worker --database-url="postgresql://localhost/notification_service" --concurrency 4
+
+# 5. Monitor each service independently
+fastjob dashboard --database-url="postgresql://localhost/user_service" --port 6161
+fastjob dashboard --database-url="postgresql://localhost/payment_service" --port 6162
+fastjob dashboard --database-url="postgresql://localhost/notification_service" --port 6163
+```
+
+### Multi-Tenant Setup
+
+For multi-tenant applications, create database-per-tenant for maximum isolation:
+
+```python
+from fastjob import FastJob
+
+# Tenant-specific instances
+tenant_a = FastJob(database_url="postgresql://localhost/tenant_a_jobs")
+tenant_b = FastJob(database_url="postgresql://localhost/tenant_b_jobs")
+
+@tenant_a.job()
+async def process_tenant_data(data_id: str):
+    # Only accesses Tenant A's data - complete isolation
+    pass
+
+@tenant_b.job()  
+async def process_tenant_data(data_id: str):
+    # Only accesses Tenant B's data - completely separate
+    pass
+
+# Same job name, different tenants, zero cross-contamination
+await tenant_a.enqueue(process_tenant_data, data_id="123")
+await tenant_b.enqueue(process_tenant_data, data_id="123")  # Different "123"
+```
+
+### Environment Configuration
+
+Use environment variables for flexible deployment:
+
+```bash
+# Development
+export USER_SERVICE_DATABASE_URL="postgresql://localhost/user_service_dev"
+export PAYMENT_SERVICE_DATABASE_URL="postgresql://localhost/payment_service_dev"
+
+# Production  
+export USER_SERVICE_DATABASE_URL="postgresql://prod-user-db:5432/jobs"
+export PAYMENT_SERVICE_DATABASE_URL="postgresql://prod-payment-db:5432/jobs"
+```
+
+```python
+import os
+from fastjob import FastJob
+
+# Automatically uses correct database per environment
+user_service = FastJob(database_url=os.environ["USER_SERVICE_DATABASE_URL"])
+payment_service = FastJob(database_url=os.environ["PAYMENT_SERVICE_DATABASE_URL"])
+```
+
+**Complete service isolation achieved!** Each service has its own job queue, worker processes, and database - no cross-service interference possible.
 
 ## A practical example
 
@@ -426,6 +572,8 @@ fastjob workers --stale --cleanup
 
 ## Configuration
 
+### Environment Variables (Simple)
+
 Two settings you need to know about:
 
 ```bash
@@ -438,12 +586,30 @@ export FASTJOB_DEV_MODE=true
 
 **That's it.** Everything else has sensible defaults.
 
-Need to customize something? Here are the other options:
+### Configuration File (Even Simpler)
+
+Create a `.env` file in your project root:
 
 ```bash
-export FASTJOB_RESULT_TTL=300        # Keep completed jobs for 5 minutes (0 = delete immediately)
-export FASTJOB_JOBS_MODULE="myapp.tasks"  # Where to find @job functions (default: auto-discover)
-export FASTJOB_LOG_LEVEL="DEBUG"    # Logging level (default: INFO)
+# .env
+FASTJOB_DATABASE_URL=postgresql://localhost/myapp
+FASTJOB_DEV_MODE=true
+FASTJOB_RESULT_TTL=300
+FASTJOB_LOG_LEVEL=INFO
+```
+
+FastJob automatically loads `.env` files - no extra setup needed!
+
+### All Available Settings
+
+```bash
+FASTJOB_DATABASE_URL=postgresql://localhost/myapp    # Database connection (required)
+FASTJOB_DEV_MODE=true                               # Enable embedded workers for development
+FASTJOB_RESULT_TTL=300                              # Keep completed jobs for 5 minutes (0 = delete immediately)
+FASTJOB_JOBS_MODULE=myapp.tasks                     # Where to find @job functions (default: auto-discover) 
+FASTJOB_LOG_LEVEL=INFO                              # Logging level (DEBUG, INFO, WARNING, ERROR)
+FASTJOB_DEFAULT_CONCURRENCY=4                       # Default worker concurrency
+FASTJOB_WORKER_HEARTBEAT_INTERVAL=5.0               # Worker heartbeat interval in seconds
 ```
 
 When TTL > 0, workers automatically clean up expired jobs every 5 minutes.

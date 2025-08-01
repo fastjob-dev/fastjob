@@ -109,6 +109,10 @@ def main():
             ],
         ),
         (
+            "Infrastructure - Database URL Integration",
+            ["tests/integration/test_database_url_integration.py"],
+        ),
+        (
             "Infrastructure - Connection Context",
             ["tests/integration/infrastructure/test_connection_context.py"],
         ),
