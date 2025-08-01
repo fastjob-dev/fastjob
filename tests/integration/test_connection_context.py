@@ -25,6 +25,7 @@ Example usage for better test isolation:
 import pytest
 import asyncio
 import asyncpg
+import os
 
 from fastjob.db.connection import (
     get_pool,
@@ -36,6 +37,7 @@ from fastjob.db.connection import (
     _pool,
 )
 from tests.db_utils import create_test_database, clear_table
+import fastjob.settings
 
 
 @pytest.mark.asyncio
@@ -367,13 +369,9 @@ async def test_database_context_exception_handling():
 async def test_fastjob_integration_with_contexts():
     """Test integration with FastJob functionality using contexts"""
     # Set up environment variables for testing
-    import os
-
     os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
 
     # Clear settings cache and reload
-    import fastjob.settings
-
     fastjob.settings._settings = None
     fastjob.settings.get_settings(reload=True)
 

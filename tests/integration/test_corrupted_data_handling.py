@@ -8,6 +8,8 @@ to ensure system robustness in production environments.
 import os
 import json
 import uuid
+import unittest.mock
+import json as json_module
 
 import pytest
 from pydantic import BaseModel
@@ -56,8 +58,6 @@ async def clean_db():
 @pytest.mark.asyncio
 async def test_corrupted_json_data(clean_db):
     """Test handling of corrupted JSON in job args using mock approach"""
-    import unittest.mock
-    import json as json_module
     from fastjob.core import processor
 
     pool = await get_pool()

@@ -224,20 +224,18 @@ async def handle_status_command(args):
     from fastjob import get_queue_stats, list_jobs
     from fastjob.core.discovery import discover_jobs
     from fastjob.core.registry import get_all_jobs
-    from fastjob.db.connection import get_pool
+    from fastjob.db.helpers import fetchval
 
     print(f"\n{StatusIcon.rocket()} FastJob System Status")
 
     # 1. Health Check
     try:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            result = await conn.fetchval("SELECT 1")
-            if result == 1:
-                print_status("Database connection: OK", "success")
-            else:
-                print_status("Database connection: FAILED", "error")
-                return 1
+        result = await fetchval("SELECT 1")
+        if result == 1:
+            print_status("Database connection: OK", "success")
+        else:
+            print_status("Database connection: FAILED", "error")
+            return 1
 
     except Exception as e:
         print_status(f"Health check failed: {e}", "error")

@@ -43,3 +43,9 @@ async def drop_test_database():
 async def clear_table(pool: Pool):
     async with pool.acquire() as conn:
         await conn.execute("TRUNCATE TABLE fastjob_jobs RESTART IDENTITY")
+        # Also clear the workers table if it exists (for heartbeat tests)
+        try:
+            await conn.execute("TRUNCATE TABLE fastjob_workers RESTART IDENTITY")
+        except Exception:
+            # Table might not exist in older test databases, that's okay
+            pass

@@ -7,6 +7,8 @@ import asyncio
 import json
 import uuid
 import os
+import datetime as dt
+import argparse
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from pydantic import BaseModel
@@ -470,8 +472,6 @@ async def test_timezone_and_datetime_handling():
         )
 
         # Test scheduling with timezone-aware datetime
-        import datetime as dt
-
         utc_time = datetime.now(dt.timezone.utc) + timedelta(minutes=5)
         tz_job_id = await fastjob.enqueue(
             simple_job_local, scheduled_at=utc_time, message="timezone aware"
@@ -508,8 +508,6 @@ async def test_cli_integration():
         # Test that we can import worker functions
 
         # Test basic argument parsing
-        import argparse
-
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")
 

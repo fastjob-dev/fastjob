@@ -13,6 +13,7 @@ import time
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from datetime import datetime, timedelta
 
 
@@ -26,9 +27,6 @@ from fastjob.settings import get_settings
 @job(unique=False)  # Ensure multiple instances can be enqueued
 async def job_counter(counter_file: str, job_index: int = 0):
     """Test job that writes to a file to track execution"""
-    import os
-    from pathlib import Path
-
     # Ensure directory exists
     Path(counter_file).parent.mkdir(parents=True, exist_ok=True)
 

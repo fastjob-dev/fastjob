@@ -3,6 +3,7 @@ FastJob Exception Classes
 Provides clear, actionable error messages for better debugging and monitoring.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -83,8 +84,6 @@ class DatabaseConnectionError(FastJobError):
     @staticmethod
     def _mask_database_url(url: str) -> str:
         """Mask password in database URL for security."""
-        import re
-
         return re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", url)
 
 

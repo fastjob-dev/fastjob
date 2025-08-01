@@ -18,6 +18,127 @@ from fastjob.db.connection import get_pool
 from fastjob.utils.hashing import compute_args_hash
 
 
+def _validate_job_arguments(job_name: str, job_meta: dict, kwargs: dict) -> None:
+    """
+    Validate job arguments against the job's Pydantic model.
+    
+    Args:
+        job_name: Name of the job function
+        job_meta: Job metadata from registry
+        kwargs: Arguments to validate
+        
+    Raises:
+        ValueError: If arguments are invalid
+    """
+    args_model = job_meta.get("args_model")
+    if args_model:
+        try:
+            args_model(**kwargs)  # Validate arguments
+        except ValidationError as e:
+            raise ValueError(f"Invalid arguments for job {job_name}: {e}") from e
+
+
+def _normalize_scheduled_time(scheduled_at: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normalize scheduled_at to be timezone-naive in UTC.
+    
+    Args:
+        scheduled_at: Optional datetime to normalize
+        
+    Returns:
+        Normalized datetime or None
+    """
+    if not scheduled_at:
+        return None
+        
+    if scheduled_at.tzinfo is not None:
+        # Convert timezone-aware datetime to UTC
+        return scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+    else:
+        # For timezone-naive datetime, assume it's in local time and convert to UTC
+        # Get the local timezone offset and apply it to get UTC
+        # Get timezone offset in seconds (accounts for DST)
+        is_dst = time.daylight and time.localtime().tm_isdst
+        offset_seconds = time.altzone if is_dst else time.timezone
+        # timezone/altzone gives seconds west of UTC (negative for east)
+        # To convert local time to UTC, we add this offset (which is negative for eastern timezones)
+        offset_delta = timedelta(seconds=offset_seconds)
+        return scheduled_at + offset_delta
+
+
+async def _handle_unique_job_check(conn, job_name: str, args_hash: str) -> Optional[str]:
+    """
+    Check for existing unique job and return its ID if found.
+    
+    Args:
+        conn: Database connection
+        job_name: Name of the job function
+        args_hash: Hash of job arguments
+        
+    Returns:
+        Existing job ID if found, None otherwise
+    """
+    existing_job = await conn.fetchrow(
+        """
+        SELECT id FROM fastjob_jobs
+        WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
+    """,
+        job_name,
+        args_hash,
+    )
+    
+    if existing_job:
+        return str(existing_job["id"])
+    return None
+
+
+async def _create_job_record(
+    conn,
+    job_id: str,
+    job_name: str,
+    job_meta: dict,
+    args_json: str,
+    args_hash: Optional[str],
+    final_priority: int,
+    final_queue: str,
+    final_unique: bool,
+    scheduled_at: Optional[datetime],
+) -> None:
+    """
+    Create a new job record in the database.
+    
+    Args:
+        conn: Database connection
+        job_id: Generated job ID
+        job_name: Name of the job function
+        job_meta: Job metadata from registry
+        args_json: JSON-serialized arguments
+        args_hash: Hash of arguments for uniqueness
+        final_priority: Final priority value
+        final_queue: Final queue name
+        final_unique: Whether job is unique
+        scheduled_at: When to execute the job
+    """
+    await conn.execute(
+        """
+        INSERT INTO fastjob_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    """,
+        uuid.UUID(job_id),
+        job_name,
+        args_json,
+        args_hash,
+        job_meta["retries"] + 1,  # max_attempts = retries + 1 (original attempt + retries)
+        final_priority,
+        final_queue,
+        final_unique,
+        scheduled_at,
+    )
+
+    # Notify workers about the new job for instant processing
+    await conn.execute(f"NOTIFY fastjob_new_job, '{final_queue}'")
+
+
 async def enqueue(
     job_func: Callable[..., Any],
     priority: Optional[int] = None,
@@ -53,83 +174,48 @@ async def enqueue(
     if not job_meta:
         raise ValueError(f"Job {job_name} not registered.")
 
-    # Validate arguments if model is specified
-    args_model = job_meta.get("args_model")
-    if args_model:
-        try:
-            args_model(**kwargs)  # Validate arguments
-        except ValidationError as e:
-            raise ValueError(f"Invalid arguments for job {job_name}: {e}") from e
+    # Step 1: Validate arguments
+    _validate_job_arguments(job_name, job_meta, kwargs)
 
-    # Figure out the final settings - use what the caller specified, otherwise use job defaults
+    # Step 2: Determine final settings - use caller values or job defaults
     final_priority = priority if priority is not None else job_meta["priority"]
     final_queue = queue if queue is not None else job_meta["queue"]
     final_unique = unique if unique is not None else job_meta["unique"]
 
-    # Normalize scheduled_at to be timezone-naive in UTC
-    if scheduled_at:
-        if scheduled_at.tzinfo is not None:
-            # Convert timezone-aware datetime to UTC
-            scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
-        else:
-            # For timezone-naive datetime, assume it's in local time and convert to UTC
-            # Get the local timezone offset and apply it to get UTC
-            # Get timezone offset in seconds (accounts for DST)
-            is_dst = time.daylight and time.localtime().tm_isdst
-            offset_seconds = time.altzone if is_dst else time.timezone
-            # timezone/altzone gives seconds west of UTC (negative for east)
-            # To convert local time to UTC, we add this offset (which is negative for eastern timezones)
-            offset_delta = timedelta(seconds=offset_seconds)
-            scheduled_at = scheduled_at + offset_delta
+    # Step 3: Normalize scheduled time
+    normalized_scheduled_at = _normalize_scheduled_time(scheduled_at)
 
+    # Step 4: Prepare job data
     job_id = str(uuid.uuid4())
-    pool = await get_pool()
-
-    # Compute deterministic args hash for reliable uniqueness
     args_json = json.dumps(kwargs)
     args_hash = compute_args_hash(kwargs) if final_unique else None
+
+    pool = await get_pool()
 
     async with pool.acquire() as conn:
         # Ensure timezone is UTC for consistent scheduled job handling
         await conn.execute("SET timezone = 'UTC'")
 
-        # For unique jobs, check if we already have this exact job queued using args_hash
+        # Step 5: Handle unique job checking
         if final_unique:
-            existing_job = await conn.fetchrow(
-                """
-                SELECT id FROM fastjob_jobs
-                WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
-            """,
-                job_name,
-                args_hash,
-            )
+            existing_job_id = await _handle_unique_job_check(conn, job_name, args_hash)
+            if existing_job_id:
+                return existing_job_id
 
-            if existing_job:
-                return str(
-                    existing_job["id"]
-                )  # Return the existing job ID instead of creating a duplicate
-
+        # Step 6: Create the job record
         try:
-            await conn.execute(
-                """
-                INSERT INTO fastjob_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            """,
-                uuid.UUID(job_id),
+            await _create_job_record(
+                conn,
+                job_id,
                 job_name,
+                job_meta,
                 args_json,
                 args_hash,
-                job_meta["retries"]
-                + 1,  # max_attempts = retries + 1 (original attempt + retries)
                 final_priority,
                 final_queue,
                 final_unique,
-                scheduled_at,
+                normalized_scheduled_at,
             )
-
-            # Notify workers about the new job for instant processing
-            await conn.execute(f"NOTIFY fastjob_new_job, '{final_queue}'")
-
         except Exception as e:
             # Sometimes the database unique constraint catches duplicates we missed
             if (
@@ -137,17 +223,9 @@ async def enqueue(
                 and "duplicate key value violates unique constraint" in str(e)
             ):
                 # Let's find the job that beat us to it using args_hash
-                existing_job = await conn.fetchrow(
-                    """
-                    SELECT id FROM fastjob_jobs
-                    WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
-                """,
-                    job_name,
-                    args_hash,
-                )
-
-                if existing_job:
-                    return str(existing_job["id"])
+                existing_job_id = await _handle_unique_job_check(conn, job_name, args_hash)
+                if existing_job_id:
+                    return existing_job_id
 
             # If it's not a uniqueness issue, something else went wrong
             raise
