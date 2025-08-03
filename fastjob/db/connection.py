@@ -9,6 +9,7 @@ from typing import AsyncContextManager, Optional
 import asyncpg
 
 from fastjob.settings import get_settings
+from fastjob.config import get_database_url, FastJobConfigError
 
 # Global pool for backward compatibility
 _pool: Optional[asyncpg.Pool] = None
@@ -17,6 +18,25 @@ _pool: Optional[asyncpg.Pool] = None
 _context_pool: contextvars.ContextVar[Optional[asyncpg.Pool]] = contextvars.ContextVar(
     "fastjob_pool", default=None
 )
+
+
+def _get_database_url() -> str:
+    """
+    Get database URL with priority for enhanced configuration.
+    
+    Priority:
+    1. Enhanced configuration (if configured)
+    2. Pydantic settings (fallback)
+    
+    Returns:
+        Database URL string
+    """
+    try:
+        # Try enhanced configuration first
+        return get_database_url()
+    except FastJobConfigError:
+        # Fall back to Pydantic settings
+        return get_settings().database_url
 
 
 async def _init_connection(conn):
@@ -39,8 +59,8 @@ async def get_pool() -> asyncpg.Pool:
     # Fall back to global pool for backward compatibility
     global _pool
     if _pool is None:
-        settings = get_settings()
-        _pool = await asyncpg.create_pool(settings.database_url, init=_init_connection)
+        database_url = _get_database_url()
+        _pool = await asyncpg.create_pool(database_url, init=_init_connection)
     return _pool
 
 
@@ -69,7 +89,7 @@ async def connection_context(
             async with pool.acquire() as conn:
                 # Use connection
     """
-    db_url = database_url or get_settings().database_url
+    db_url = database_url or _get_database_url()
     pool = await asyncpg.create_pool(db_url, init=_init_connection)
 
     # Set context-local pool
@@ -91,7 +111,7 @@ class DatabaseContext:
     """
 
     def __init__(self, database_url: Optional[str] = None):
-        self.database_url = database_url or get_settings().database_url
+        self.database_url = database_url or _get_database_url()
         self.pool: Optional[asyncpg.Pool] = None
         self._token = None
 
@@ -111,5 +131,5 @@ class DatabaseContext:
 
 async def create_pool(database_url: Optional[str] = None) -> asyncpg.Pool:
     """Create a new connection pool without affecting global state"""
-    db_url = database_url or get_settings().database_url
+    db_url = database_url or _get_database_url()
     return await asyncpg.create_pool(db_url, init=_init_connection)
