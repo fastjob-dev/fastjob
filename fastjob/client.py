@@ -367,9 +367,41 @@ class FastJob:
                 await asyncio.gather(*tasks, return_exceptions=True)
             else:
                 # Run until cancelled (infinite loop)
+                from .utils.signals import GracefulSignalHandler
+                
+                # Setup signal handlers for instance-based workers
+                instance_signal_handler = GracefulSignalHandler()
+                instance_signal_handler.setup_signal_handlers(shutdown_event)
+                
                 try:
-                    await asyncio.gather(*tasks)
+                    # Create a task that waits for shutdown signal
+                    signal_task = asyncio.create_task(shutdown_event.wait())
+                    
+                    # Wait for either workers to complete or shutdown signal
+                    worker_gather_task = asyncio.gather(*tasks, return_exceptions=True)
+                    done, pending = await asyncio.wait(
+                        [worker_gather_task, signal_task],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+                    
+                    # If shutdown was requested, cancel workers
+                    if signal_task in done:
+                        logger.info("Worker graceful shutdown initiated by signal...")
+                    
+                    # Cancel all tasks regardless of which completed first
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    
+                    # Cancel pending monitoring tasks
+                    for task in pending:
+                        task.cancel()
+                        
+                    # Wait for graceful shutdown
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    
                 except KeyboardInterrupt:
+                    # Fallback handler for direct KeyboardInterrupt (shouldn't happen with signals)
                     logger.info("Worker interrupted by user")
                     shutdown_event.set()
                     
@@ -380,6 +412,10 @@ class FastJob:
                             
                     # Wait for graceful shutdown
                     await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                finally:
+                    # Cleanup signal handlers
+                    instance_signal_handler.restore_signal_handlers()
                     
         finally:
             # Clean up heartbeat if it was started
