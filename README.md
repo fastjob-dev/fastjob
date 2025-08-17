@@ -290,17 +290,17 @@ fastjob start --database-url="postgresql://localhost/billing_service" --concurre
 fastjob status --database-url="postgresql://localhost/user_service"
 ```
 
-### Job Management
+### Monitoring
 
 ```bash
-# List jobs
-fastjob jobs --status failed --limit 10
+# Show system status and queue statistics
+fastjob status --verbose --jobs
 
-# Retry failed jobs
-fastjob retry --queue default
+# Show worker status and heartbeats
+fastjob workers --stale
 
-# Cancel jobs
-fastjob cancel --job-id 12345
+# Clean up stale worker records
+fastjob workers --cleanup
 ```
 
 ## Production & Deployment
