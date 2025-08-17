@@ -13,34 +13,39 @@ logger = logging.getLogger(__name__)
 async def resolve_fastjob_instance(args):
     """
     Resolve FastJob instance configuration from CLI arguments.
-    
+
     If --database-url is provided, returns a FastJob instance.
     Otherwise, returns None to use the global API.
-    
+
     Returns:
         FastJob instance or None (to use global API)
     """
-    from fastjob import FastJob
     from pydantic import ValidationError
-    
+
+    from fastjob import FastJob
+
     # Use instance-based API if database URL is provided
-    if hasattr(args, 'database_url') and args.database_url:
+    if hasattr(args, "database_url") and args.database_url:
         try:
             return FastJob(database_url=args.database_url)
         except ValidationError as e:
             # Make database URL errors friendlier
-            if 'database_url' in str(e):
-                if 'postgresql' in str(e).lower():
-                    raise ValueError(f"Invalid database URL: {args.database_url}\nFastJob requires PostgreSQL URLs like: postgresql://user:password@localhost/database")
+            if "database_url" in str(e):
+                if "postgresql" in str(e).lower():
+                    raise ValueError(
+                        f"Invalid database URL: {args.database_url}\nFastJob requires PostgreSQL URLs like: postgresql://user:password@localhost/database"
+                    )
                 else:
                     raise ValueError(f"Invalid database URL: {args.database_url}")
             raise ValueError(f"Configuration error: {e}")
         except Exception as e:
             # Handle other connection/config errors
-            if 'connect' in str(e).lower() or 'connection' in str(e).lower():
-                raise ValueError(f"Can't connect to database: {args.database_url}\nMake sure PostgreSQL is running and the URL is correct")
+            if "connect" in str(e).lower() or "connection" in str(e).lower():
+                raise ValueError(
+                    f"Can't connect to database: {args.database_url}\nMake sure PostgreSQL is running and the URL is correct"
+                )
             raise ValueError(f"Database configuration error: {e}")
-    
+
     # Otherwise use global API
     return None
 
@@ -88,7 +93,8 @@ def register_core_commands():
                     "help": "Process jobs once and exit (useful for testing)",
                 },
             },
-        ] + instance_arguments,
+        ]
+        + instance_arguments,
         category="worker",
     )
 
@@ -127,7 +133,8 @@ def register_core_commands():
                 "args": ["--verbose"],
                 "kwargs": {"action": "store_true", "help": "Show detailed information"},
             },
-        ] + instance_arguments,
+        ]
+        + instance_arguments,
         category="monitoring",
     )
 
@@ -149,7 +156,8 @@ def register_core_commands():
                     "help": "Clean up stale worker records",
                 },
             },
-        ] + instance_arguments,
+        ]
+        + instance_arguments,
         category="monitoring",
     )
 
@@ -171,7 +179,7 @@ def register_core_commands():
 
 async def handle_start_command(args):
     """Handle start command (worker functionality)"""
-    
+
     # Resolve FastJob instance from CLI arguments
     try:
         fastjob_instance = await resolve_fastjob_instance(args)
@@ -189,9 +197,12 @@ async def handle_start_command(args):
 
     print_status(f"Starting FastJob worker with {args.concurrency} workers", "info")
     print_status(f"Processing queues: {queue_msg}", "info")
-    
+
     if fastjob_instance:
-        print_status(f"Using instance-based configuration (database: {fastjob_instance.settings.database_url})", "info")
+        print_status(
+            f"Using instance-based configuration (database: {fastjob_instance.settings.database_url})",
+            "info",
+        )
     else:
         print_status("Using global API configuration", "info")
 
@@ -204,6 +215,7 @@ async def handle_start_command(args):
         else:
             # Use global API
             from fastjob.core.processor import run_worker
+
             await run_worker(
                 concurrency=args.concurrency, queues=queues, run_once=args.run_once
             )
@@ -223,7 +235,7 @@ async def handle_start_command(args):
 
 async def handle_setup_command(args):
     """Handle setup command (migration functionality)"""
-    
+
     # Resolve FastJob instance from CLI arguments
     try:
         fastjob_instance = await resolve_fastjob_instance(args)
@@ -233,9 +245,12 @@ async def handle_setup_command(args):
 
     try:
         print_status("Setting up FastJob database...", "info")
-        
+
         if fastjob_instance:
-            print_status(f"Using instance-based configuration (database: {fastjob_instance.settings.database_url})", "info")
+            print_status(
+                f"Using instance-based configuration (database: {fastjob_instance.settings.database_url})",
+                "info",
+            )
             # Use instance-based migrations
             status = await fastjob_instance.get_migration_status()
             applied_count = await fastjob_instance.run_migrations()
@@ -244,6 +259,7 @@ async def handle_setup_command(args):
             # Use global API migrations
             from fastjob.db.migration_runner import get_migration_status
             from fastjob.db.migrations import run_migrations
+
             status = await get_migration_status()
             applied_count = await run_migrations()
 
@@ -267,13 +283,13 @@ async def handle_setup_command(args):
     except Exception as e:
         # Make setup errors friendlier
         error_msg = str(e).lower()
-        if 'connection' in error_msg or 'connect' in error_msg:
+        if "connection" in error_msg or "connect" in error_msg:
             print_status("Can't connect to database", "error")
             print("Make sure PostgreSQL is running and your database URL is correct")
-        elif 'database' in error_msg and 'does not exist' in error_msg:
-            print_status("Database doesn't exist", "error") 
+        elif "database" in error_msg and "does not exist" in error_msg:
+            print_status("Database doesn't exist", "error")
             print("Run: createdb your_database_name")
-        elif 'permission' in error_msg or 'authentication' in error_msg:
+        elif "permission" in error_msg or "authentication" in error_msg:
             print_status("Database permission error", "error")
             print("Check your database username/password in the connection URL")
         else:
@@ -287,9 +303,13 @@ async def handle_setup_command(args):
 
 async def handle_migrate_status_command(args):
     """Handle migrate status command"""
+    from fastjob.db.context import (
+        DatabaseContext,
+        clear_current_context,
+        set_current_context,
+    )
     from fastjob.db.migration_runner import get_migration_status
-    from fastjob.db.context import DatabaseContext, set_current_context, clear_current_context
-    
+
     # Resolve FastJob instance from CLI arguments
     try:
         fastjob_instance = await resolve_fastjob_instance(args)
@@ -300,11 +320,14 @@ async def handle_migrate_status_command(args):
     # Set up database context
     if fastjob_instance:
         context = DatabaseContext.from_instance(fastjob_instance)
-        print_status(f"Using instance-based configuration: {fastjob_instance.settings.database_url}", "info")
+        print_status(
+            f"Using instance-based configuration: {fastjob_instance.settings.database_url}",
+            "info",
+        )
     else:
         context = DatabaseContext.from_global_api()
         print_status("Using global API configuration", "info")
-    
+
     set_current_context(context)
 
     try:
@@ -341,8 +364,12 @@ async def handle_migrate_status_command(args):
 
 async def handle_status_command(args):
     """Handle status command (health + jobs + queues functionality)"""
-    from fastjob.db.context import DatabaseContext, set_current_context, clear_current_context
-    
+    from fastjob.db.context import (
+        DatabaseContext,
+        clear_current_context,
+        set_current_context,
+    )
+
     # Resolve FastJob instance from CLI arguments
     try:
         fastjob_instance = await resolve_fastjob_instance(args)
@@ -353,19 +380,23 @@ async def handle_status_command(args):
     # Set up database context
     if fastjob_instance:
         context = DatabaseContext.from_instance(fastjob_instance)
-        print_status(f"Using instance-based configuration: {fastjob_instance.settings.database_url}", "info")
+        print_status(
+            f"Using instance-based configuration: {fastjob_instance.settings.database_url}",
+            "info",
+        )
     else:
         context = DatabaseContext.from_global_api()
         print_status("Using global API configuration", "info")
-    
+
     set_current_context(context)
-    
+
     try:
         print(f"\n{StatusIcon.rocket()} FastJob System Status")
 
         # 1. Health Check
         try:
             from fastjob.db.context import get_context_pool
+
             pool = await get_context_pool()
             async with pool.acquire() as conn:
                 result = await conn.fetchval("SELECT 1")
@@ -384,6 +415,7 @@ async def handle_status_command(args):
     # 2. Queue Statistics
     try:
         from fastjob.core.queue import get_queue_stats
+
         queues = await get_queue_stats()
         if queues:
             total_jobs = sum(q["total_jobs"] for q in queues)
@@ -538,9 +570,14 @@ async def handle_cli_debug_command(args):
 
 async def handle_workers_command(args):
     """Handle workers command (worker monitoring functionality)"""
-    from fastjob.core.heartbeat import get_worker_status, cleanup_stale_workers
-    from fastjob.db.context import DatabaseContext, set_current_context, clear_current_context, get_context_pool
-    
+    from fastjob.core.heartbeat import cleanup_stale_workers, get_worker_status
+    from fastjob.db.context import (
+        DatabaseContext,
+        clear_current_context,
+        get_context_pool,
+        set_current_context,
+    )
+
     # Resolve FastJob instance from CLI arguments
     try:
         fastjob_instance = await resolve_fastjob_instance(args)
@@ -551,11 +588,14 @@ async def handle_workers_command(args):
     # Set up database context
     if fastjob_instance:
         context = DatabaseContext.from_instance(fastjob_instance)
-        print_status(f"Using instance-based configuration: {fastjob_instance.settings.database_url}", "info")
+        print_status(
+            f"Using instance-based configuration: {fastjob_instance.settings.database_url}",
+            "info",
+        )
     else:
         context = DatabaseContext.from_global_api()
         print_status("Using global API configuration", "info")
-    
+
     set_current_context(context)
 
     try:

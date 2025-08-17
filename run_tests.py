@@ -137,6 +137,7 @@ def main():
                 "tests/unit/test_errors.py",
                 "tests/unit/test_hashing.py",
                 "tests/unit/test_signal_handling.py",
+                "tests/unit/test_enhanced_config.py",
             ],
         ),
         (

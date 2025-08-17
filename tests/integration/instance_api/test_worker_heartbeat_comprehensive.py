@@ -6,8 +6,8 @@ These tests properly align with the architectural constraint that worker heartbe
 are tracked per process (hostname, pid), not per FastJob instance.
 """
 
-import os
 import asyncio
+import os
 import uuid
 
 import pytest
@@ -18,8 +18,8 @@ os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_te
 from fastjob import FastJob
 from fastjob.core.heartbeat import (
     WorkerHeartbeat,
-    get_worker_status,
     cleanup_stale_workers,
+    get_worker_status,
 )
 
 
@@ -28,14 +28,15 @@ async def clean_db():
     """Clean database before each test - FAST VERSION"""
     # Just clear worker records, database setup handled by conftest.py
     from fastjob.client import FastJob
+
     app = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
     pool = await app.get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM fastjob_workers")
     await app.close()
-    
+
     yield
-    
+
     # Clear worker records after test
     app = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
     pool = await app.get_pool()
@@ -61,10 +62,10 @@ async def test_worker_heartbeat_lifecycle_complete(clean_db, fastjob_instance):
 
     # Create worker with instance pool
     worker = WorkerHeartbeat(pool, queues=["lifecycle"], concurrency=3)
-    
+
     # Test registration
     await worker.register_worker()
-    
+
     async with pool.acquire() as conn:
         result = await conn.fetchrow(
             "SELECT * FROM fastjob_workers WHERE id = $1", worker.worker_id
@@ -78,7 +79,7 @@ async def test_worker_heartbeat_lifecycle_complete(clean_db, fastjob_instance):
     # Test heartbeat start and updates
     await worker.start_heartbeat()
     await asyncio.sleep(0.2)  # Let heartbeat run
-    
+
     async with pool.acquire() as conn:
         result = await conn.fetchrow(
             "SELECT last_heartbeat FROM fastjob_workers WHERE id = $1", worker.worker_id
@@ -88,7 +89,7 @@ async def test_worker_heartbeat_lifecycle_complete(clean_db, fastjob_instance):
 
     # Test graceful stop
     await worker.stop_heartbeat()
-    
+
     async with pool.acquire() as conn:
         result = await conn.fetchrow(
             "SELECT status FROM fastjob_workers WHERE id = $1", worker.worker_id
@@ -102,18 +103,18 @@ async def test_multiple_fastjob_instances_shared_heartbeat(clean_db):
     # Create multiple FastJob instances
     app1 = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
     app2 = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
-    
+
     try:
         pool1 = await app1.get_pool()
         pool2 = await app2.get_pool()
-        
+
         # Create workers from different instances
         worker1 = WorkerHeartbeat(pool1, queues=["shared1"], concurrency=2)
         worker2 = WorkerHeartbeat(pool2, queues=["shared2"], concurrency=4)
-        
+
         # Register first worker
         await worker1.register_worker()
-        
+
         async with pool1.acquire() as conn:
             workers = await conn.fetch("SELECT * FROM fastjob_workers")
             assert len(workers) == 1
@@ -123,7 +124,7 @@ async def test_multiple_fastjob_instances_shared_heartbeat(clean_db):
 
         # Register second worker - should update the same record due to (hostname, pid) constraint
         await worker2.register_worker()
-        
+
         async with pool2.acquire() as conn:
             workers = await conn.fetch("SELECT * FROM fastjob_workers")
             assert len(workers) == 1  # Still only one record
@@ -170,7 +171,7 @@ async def test_worker_job_processing_integration(clean_db, fastjob_instance):
 
     # Wait a bit to ensure heartbeat has time to update
     await asyncio.sleep(0.1)
-    
+
     # Process jobs while heartbeat is running
     await app.run_worker(run_once=True, queues=["integration"])
 
@@ -209,7 +210,7 @@ async def test_worker_failure_detection_and_cleanup(clean_db, fastjob_instance):
     async with pool.acquire() as conn:
         result = await conn.fetchrow(
             "SELECT status, last_heartbeat FROM fastjob_workers WHERE id = $1",
-            worker.worker_id
+            worker.worker_id,
         )
         assert result["status"] == "active"
         result["last_heartbeat"]
@@ -246,7 +247,7 @@ async def test_worker_status_monitoring_functions(clean_db, fastjob_instance):
     # Create and register multiple workers to test monitoring
     workers = []
     for i in range(3):
-        worker = WorkerHeartbeat(pool, queues=[f"monitor_{i}"], concurrency=i+1)
+        worker = WorkerHeartbeat(pool, queues=[f"monitor_{i}"], concurrency=i + 1)
         await worker.register_worker()
         if i < 2:  # Start heartbeat for first 2 workers only
             await worker.start_heartbeat()
@@ -272,14 +273,16 @@ async def test_worker_status_monitoring_functions(clean_db, fastjob_instance):
                 "SELECT * FROM fastjob_workers WHERE id = $1", worker.worker_id
             )
             if i < 2:  # Workers with heartbeats (but only last one due to constraint)
-                if result:  # Due to (hostname, pid) constraint, only one worker record exists
+                if (
+                    result
+                ):  # Due to (hostname, pid) constraint, only one worker record exists
                     assert result["status"] == "active"
             # Since workers overwrite each other due to constraint, check the final state
-        
+
         # Check total worker count (should be 1 due to constraint)
         total_count = await conn.fetchval("SELECT COUNT(*) FROM fastjob_workers")
         assert total_count == 1
-        
+
         # Test non-existent worker query
         fake_id = uuid.uuid4()
         fake_result = await conn.fetchrow(
@@ -316,7 +319,7 @@ async def test_worker_configuration_persistence(clean_db, fastjob_instance):
                 "SELECT * FROM fastjob_workers WHERE id = $1", worker.worker_id
             )
             assert result is not None
-            
+
             # Handle different queue representations
             expected_queues = config["queues"]
             if expected_queues is None:
@@ -327,7 +330,7 @@ async def test_worker_configuration_persistence(clean_db, fastjob_instance):
                 assert result["queues"] is None or result["queues"] == []
             else:
                 assert result["queues"] == expected_queues
-            
+
             assert result["concurrency"] == config["concurrency"]
             assert result["status"] == "active"
 
@@ -338,7 +341,7 @@ async def test_worker_configuration_persistence(clean_db, fastjob_instance):
             assert count == 1
 
 
-@pytest.mark.asyncio  
+@pytest.mark.asyncio
 async def test_database_pool_consistency_across_instances(clean_db):
     """Test that database operations are consistent across different FastJob instance pools"""
     # Create multiple FastJob instances
@@ -347,19 +350,19 @@ async def test_database_pool_consistency_across_instances(clean_db):
         FastJob(database_url="postgresql://postgres@localhost/fastjob_test"),
         FastJob(database_url="postgresql://postgres@localhost/fastjob_test"),
     ]
-    
+
     try:
         # Get pools from each instance
         pools = [await app.get_pool() for app in instances]
-        
+
         # Verify pools are different objects but access same database
         assert pools[0] is not pools[1]
         assert pools[1] is not pools[2]
-        
+
         # Create worker using first pool
         worker = WorkerHeartbeat(pools[0], queues=["consistency"], concurrency=3)
         await worker.register_worker()
-        
+
         # Verify all pools can see the same worker record
         for pool in pools:
             async with pool.acquire() as conn:
@@ -369,11 +372,11 @@ async def test_database_pool_consistency_across_instances(clean_db):
                 assert result is not None
                 assert result["queues"] == ["consistency"]
                 assert result["concurrency"] == 3
-                
-        # Update worker configuration using second pool  
+
+        # Update worker configuration using second pool
         worker2 = WorkerHeartbeat(pools[1], queues=["updated"], concurrency=5)
         await worker2.register_worker()
-        
+
         # Verify update is visible from all pools
         for pool in pools:
             async with pool.acquire() as conn:

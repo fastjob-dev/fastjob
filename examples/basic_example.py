@@ -6,6 +6,7 @@ This example demonstrates the essential features of FastJob base package.
 import asyncio
 from datetime import datetime, timedelta
 from typing import List
+
 from pydantic import BaseModel
 
 import fastjob

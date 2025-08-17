@@ -46,8 +46,9 @@ async def _run_embedded_worker_loop(
     """
     if poll_interval is None:
         from fastjob.settings import get_settings
+
         poll_interval = get_settings().embedded_poll_interval
-        
+
     global _shutdown_event
     _shutdown_event = asyncio.Event()
 

@@ -38,35 +38,38 @@ def load_plugin_commands():
 async def handle_plugin_command(args):
     """
     Handle plugin command execution with proper database context setup.
-    
+
     This function:
     1. Resolves the FastJob instance (Global API vs Instance API)
     2. Sets up the appropriate database context
     3. Calls the plugin command handler
     4. Cleans up the context
     """
-    from ..db.context import DatabaseContext, set_current_context, clear_current_context
-    
+    from ..db.context import DatabaseContext, clear_current_context, set_current_context
+
     try:
         # Resolve FastJob instance based on CLI arguments
         fastjob_instance = await resolve_fastjob_instance(args)
-        
+
         # Set up database context
         if fastjob_instance:
             # Instance-based API with --database-url
             context = DatabaseContext.from_instance(fastjob_instance)
-            print_status(f"Using instance-based configuration: {fastjob_instance.settings.database_url}", "info")
+            print_status(
+                f"Using instance-based configuration: {fastjob_instance.settings.database_url}",
+                "info",
+            )
         else:
             # Global API (default)
             context = DatabaseContext.from_global_api()
             print_status("Using global API configuration", "info")
-        
+
         # Set the context for Pro/Enterprise features to use
         set_current_context(context)
-        
+
         # Call the plugin command handler
         return args.plugin_func(args)
-        
+
     except Exception as e:
         print_status(f"Plugin command setup failed: {e}", "error")
         return 1

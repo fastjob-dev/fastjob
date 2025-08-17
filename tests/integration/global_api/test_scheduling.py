@@ -2,13 +2,13 @@
 Test suite for job scheduling functionality
 """
 
-import pytest
+import os
 import uuid
 from datetime import datetime, timedelta
 
-import fastjob
+import pytest
 
-import os
+import fastjob
 
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
 
@@ -52,15 +52,14 @@ async def test_immediate_vs_scheduled_jobs():
         assert immediate_record["status"] == "done"
         assert scheduled_record["status"] == "queued"  # Still waiting
 
+
 @pytest.mark.asyncio
 async def test_priority_ordering(clean_db):
     """Test that higher priority jobs (lower numbers) are processed first"""
     # Enqueue jobs with different priorities
     await fastjob.enqueue(scheduled_job, priority=100, message="low")
     await fastjob.enqueue(scheduled_job, priority=1, message="high")
-    await fastjob.enqueue(
-        scheduled_job, priority=50, message="medium"
-    )
+    await fastjob.enqueue(scheduled_job, priority=50, message="medium")
 
     # Verify jobs are queued in database in priority order
     global_app = fastjob._get_global_app()
@@ -75,7 +74,7 @@ async def test_priority_ordering(clean_db):
             ORDER BY priority ASC, created_at ASC
         """
         )
-        
+
         # Extract priorities in the order they would be processed
         processing_order = [job["priority"] for job in jobs]
 
@@ -92,11 +91,13 @@ async def test_queue_isolation():
 
     # Database setup handled by conftest.py
 
+
 @pytest.mark.asyncio
 async def test_schedule_run_in_and_schedule_run_at():
     """Test scheduling with different time specifications"""
 
     # Database setup handled by conftest.py
+
 
 @pytest.mark.asyncio
 async def test_unified_schedule_function():
@@ -129,7 +130,7 @@ async def test_unified_schedule_function():
     # Verify all jobs are scheduled correctly
     global_app = fastjob._get_global_app()
     app_pool = await global_app.get_pool()
-    
+
     async with app_pool.acquire() as conn:
         datetime_record = await conn.fetchrow(
             "SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(datetime_job_id)
@@ -156,11 +157,13 @@ async def test_unified_schedule_function():
         assert float_record["status"] == "queued"
         assert timedelta_record["status"] == "queued"
 
+
 @pytest.mark.asyncio
 async def test_schedule_invalid_input():
     """Test that schedule() raises appropriate errors for invalid input"""
 
     # Database setup handled by conftest.py
+
 
 @pytest.mark.asyncio
 async def test_schedule_keyword_arguments():

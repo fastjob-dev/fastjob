@@ -2,10 +2,11 @@
 Test suite for edge cases, error handling, and integration scenarios
 """
 
-import pytest
 import os
 from datetime import datetime, timedelta
 from unittest.mock import patch
+
+import pytest
 from pydantic import BaseModel
 
 import fastjob
@@ -46,6 +47,7 @@ async def exception_job(exception_type: str):
 @pytest.mark.asyncio
 async def test_malformed_job_data():
     """Test handling of malformed or corrupted job data"""
+
     # Register a test job to ensure registry is populated
     @fastjob.job(retries=3)
     async def test_simple_job(message: str):
@@ -53,7 +55,7 @@ async def test_malformed_job_data():
 
     # Enqueue a normal job first
     job_id = await fastjob.enqueue(test_simple_job, message="normal job")
-    
+
     # Process the job
     processed = await fastjob.run_worker(run_once=True)
     assert processed
@@ -93,7 +95,7 @@ async def test_database_connection_failures():
     await fastjob.enqueue(simple_job, message="connection test")
 
     # Mock database connection failure
-    with patch('fastjob.db.helpers.fetchval', side_effect=ConnectionError("DB down")):
+    with patch("fastjob.db.helpers.fetchval", side_effect=ConnectionError("DB down")):
         try:
             # This should handle the connection error gracefully
             await fastjob.run_worker(run_once=True)
@@ -113,7 +115,7 @@ async def test_job_argument_validation_edge_cases():
         complex_job,
         data={"key": "value", "nested": {"inner": "data"}},
         numbers=[1, 2, 3, 4, 5],
-        optional_field="custom_value"
+        optional_field="custom_value",
     )
 
     # Process the job
@@ -141,7 +143,7 @@ async def test_exception_handling_in_jobs():
     # Check that jobs failed with appropriate errors
     value_status = await fastjob.get_job_status(value_error_job)
     type_status = await fastjob.get_job_status(type_error_job)
-    
+
     assert value_status["status"] in ["failed", "dead_letter"]
     assert type_status["status"] in ["failed", "dead_letter"]
     assert "Test value error" in value_status["last_error"]
@@ -155,11 +157,13 @@ async def test_large_job_payloads():
     large_data = {
         "large_list": list(range(50)),  # Reduced for speed
         "large_dict": {f"key_{i}": f"value_{i}" for i in range(10)},
-        "large_string": "x" * 100
+        "large_string": "x" * 100,
     }
 
     # Enqueue job with large payload
-    job_id = await fastjob.enqueue(complex_job, data=large_data, numbers=list(range(20)))
+    job_id = await fastjob.enqueue(
+        complex_job, data=large_data, numbers=list(range(20))
+    )
 
     # Process the job
     processed = await fastjob.run_worker(run_once=True)
@@ -217,10 +221,13 @@ async def test_timezone_and_datetime_handling():
     """Test scheduling with different timezone scenarios"""
     # Test naive datetime scheduling
     future_time = datetime.now() + timedelta(minutes=30)
-    naive_job = await fastjob.enqueue(simple_job, message="naive", scheduled_at=future_time)
+    naive_job = await fastjob.enqueue(
+        simple_job, message="naive", scheduled_at=future_time
+    )
 
-    # Test timezone-aware datetime scheduling  
+    # Test timezone-aware datetime scheduling
     from datetime import timezone
+
     tz_time = datetime.now(timezone.utc) + timedelta(minutes=30)
     tz_job = await fastjob.enqueue(simple_job, message="timezone", scheduled_at=tz_time)
 
@@ -238,21 +245,21 @@ async def test_timezone_and_datetime_handling():
 async def test_cli_integration():
     """Test CLI commands integration"""
     # Test CLI imports don't crash
+    from fastjob.cli.commands.core import register_core_commands
     from fastjob.cli.main import main
     from fastjob.cli.registry import get_cli_registry
-    from fastjob.cli.commands.core import register_core_commands
 
     # Test core command registration
     register_core_commands()
     registry = get_cli_registry()
-    
+
     # Verify core commands are registered
     commands = registry.get_all_commands()
     command_names = [cmd.name for cmd in commands]
-    
+
     assert "setup" in command_names  # Database setup command
     assert "start" in command_names  # Worker start command
-    
+
     # Test that main function exists and is callable
     assert callable(main)
 
@@ -266,10 +273,10 @@ async def test_environment_variable_handling():
         # Test database URL environment variable
         test_url = "postgresql://test@localhost/test_db"
         os.environ["FASTJOB_DATABASE_URL"] = test_url
-        
+
         # Verify environment variable is read correctly
         assert os.environ.get("FASTJOB_DATABASE_URL") == test_url
-        
+
     finally:
         # Restore original environment
         os.environ.clear()

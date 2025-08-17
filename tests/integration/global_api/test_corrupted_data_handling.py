@@ -5,11 +5,11 @@ Tests graceful handling of corrupted JSON, validation errors, and argument misma
 to ensure system robustness in production environments.
 """
 
-import os
 import json
-import uuid
-import unittest.mock
 import json as json_module
+import os
+import unittest.mock
+import uuid
 
 import pytest
 from pydantic import BaseModel
@@ -42,8 +42,8 @@ async def simple_test_job(message: str):
 @pytest.fixture
 async def clean_db():
     """Clean database before each test"""
-    from tests.db_utils import clear_table
     from fastjob.core.discovery import discover_jobs
+    from tests.db_utils import clear_table
 
     # Ensure jobs are registered
     discover_jobs()
@@ -274,12 +274,12 @@ async def test_pydantic_validation_success(clean_db):
     # Debug: Check job registration
     print(f"Job function: {validated_test_job}")
     print(f"Job name: {validated_test_job._fastjob_name}")
-    
+
     # Debug: Check global app database configuration
     global_app = fastjob._get_global_app()
     print(f"Global app database URL: {global_app.settings.database_url}")
     print("Test pool database from get_pool(): Expected test database")
-    
+
     # Enqueue a valid job with Pydantic validation
     try:
         job_id = await fastjob.enqueue(validated_test_job, message="valid", count=5)
@@ -287,6 +287,7 @@ async def test_pydantic_validation_success(clean_db):
     except Exception as e:
         print(f"Enqueue failed: {e}")
         import traceback
+
         traceback.print_exc()
         raise
 
@@ -294,26 +295,28 @@ async def test_pydantic_validation_success(clean_db):
     async with app_pool.acquire() as conn:
         jobs = await conn.fetch("SELECT job_name, status FROM fastjob_jobs")
         print(f"Jobs in test database pool: {[dict(job) for job in jobs]}")
-    
+
     # Debug: Check database state from global app pool
     global_app = fastjob._get_global_app()
     await global_app._ensure_initialized()
     async with global_app._pool.acquire() as conn:
         jobs_global = await conn.fetch("SELECT job_name, status FROM fastjob_jobs")
         print(f"Jobs in global app pool: {[dict(job) for job in jobs_global]}")
-        
+
     # Debug: Check registry lookup
     if jobs:
-        db_job_name = jobs[0]['job_name']
+        db_job_name = jobs[0]["job_name"]
         from fastjob.core.registry import get_job
+
         job_meta = get_job(db_job_name)
         print(f"Job lookup for '{db_job_name}': {job_meta is not None}")
-        
+
         if not job_meta:
             # Check both registries
             from fastjob.core.registry import _global_registry
+
             print(f"Global registry keys: {list(_global_registry._registry.keys())}")
-            
+
             try:
                 global_app = fastjob._get_global_app()
                 app_registry = global_app.get_job_registry()
@@ -360,7 +363,9 @@ async def test_regular_job_exceptions_still_retry(clean_db):
     # With retries=0, job goes directly to dead letter after first failure
     async with app_pool.acquire() as conn:
         job = await conn.fetchrow("SELECT * FROM fastjob_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"  # Should be in dead letter after max attempts
+        assert (
+            job["status"] == "dead_letter"
+        )  # Should be in dead letter after max attempts
         assert job["attempts"] == 1  # Single attempt made
         assert "Intentional failure" in job["last_error"]
 

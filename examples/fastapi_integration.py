@@ -5,8 +5,10 @@ Demonstrates how to integrate FastJob with a FastAPI web application.
 
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel
+
 import fastjob
 
 

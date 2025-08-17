@@ -2,11 +2,12 @@
 Test suite for FastJob core functionality
 """
 
-import pytest
 import json
-import uuid
-import os
 import logging
+import os
+import uuid
+
+import pytest
 from pydantic import BaseModel
 
 import fastjob
@@ -33,43 +34,48 @@ _flaky_job_fail_counts = {}
 async def test_enqueue_and_run_job():
     """Test job enqueue and processing with instance-based architecture"""
     await create_test_database()
-    
+
     try:
         # Create a FastJob instance for testing (not using global)
-        app = fastjob.FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
-        
+        app = fastjob.FastJob(
+            database_url="postgresql://postgres@localhost/fastjob_test"
+        )
+
         # Register job with the instance
         @app.job(retries=5, args_model=SampleJobArgs)
         async def instance_sample_job(x, y):
             return x + y
-            
+
         # Clear test table using instance pool to ensure consistency
         instance_pool = await app.get_pool()
         async with instance_pool.acquire() as conn:
             await conn.execute("DELETE FROM fastjob_jobs")
-        
+
         # Enqueue job using instance API
         job_id = await app.enqueue(instance_sample_job, x=1, y=2)
         assert job_id
-        
+
         # Process the job using instance worker
         await app.run_worker(run_once=True)
-        
+
         # Check job status using instance pool
         async with instance_pool.acquire() as conn:
             job_record = await conn.fetchrow(
                 "SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id)
             )
-            
+
             assert job_record is not None, f"Job {job_id} not found in database"
-            assert job_record["job_name"] == "tests.integration.instance_api.test_core.instance_sample_job"
+            assert (
+                job_record["job_name"]
+                == "tests.integration.instance_api.test_core.instance_sample_job"
+            )
             assert json.loads(job_record["args"]) == {"x": 1, "y": 2}
             assert job_record["max_attempts"] == 6  # retries=5 -> max_attempts=6
             assert job_record["status"] == "done"
-            
+
         # Clean up the instance
         await app.close()
-        
+
     finally:
         await drop_test_database()
 
@@ -80,12 +86,12 @@ async def test_enqueue_job_invalid_args():
     try:
         # Configure global app to use test database
         fastjob.configure(database_url="postgresql://postgres@localhost/fastjob_test")
-        
+
         # Define job with args validation
         @fastjob.job(retries=5, args_model=SampleJobArgs)
         async def sample_job(x, y):
             return x + y
-        
+
         # Clear test table using global app pool
         global_app = fastjob._get_global_app()
         global_pool = await global_app.get_pool()
@@ -94,11 +100,11 @@ async def test_enqueue_job_invalid_args():
 
         with pytest.raises(ValueError, match="Invalid arguments for job"):
             await fastjob.enqueue(sample_job, x=1, y="invalid")
-            
+
         # Clean up global app
         if global_app.is_initialized:
             await global_app.close()
-            
+
     finally:
         await drop_test_database()
 
@@ -112,21 +118,23 @@ async def test_retry_mechanism():
     try:
         # Configure global app to use test database
         fastjob.configure(database_url="postgresql://postgres@localhost/fastjob_test")
-        
+
         # Define flaky job that fails first 2 times then succeeds
         @fastjob.job(retries=3)
         async def flaky_job(job_id: str, should_fail: bool):
             if should_fail:
-                _flaky_job_fail_counts[job_id] = _flaky_job_fail_counts.get(job_id, 0) + 1
+                _flaky_job_fail_counts[job_id] = (
+                    _flaky_job_fail_counts.get(job_id, 0) + 1
+                )
                 if _flaky_job_fail_counts[job_id] <= 2:
                     raise ValueError("Simulated failure")
             return "Success"
-            
+
         # Define job that always fails
         @fastjob.job(retries=3)
         async def always_fail_job(job_id: str):
             raise ValueError("Always fails")
-        
+
         # Clear test table using global app pool
         global_app = fastjob._get_global_app()
         global_pool = await global_app.get_pool()
@@ -135,11 +143,13 @@ async def test_retry_mechanism():
 
         # Test job that succeeds after retries
         job_id_1 = str(uuid.uuid4())
-        actual_job_id_1 = await fastjob.enqueue(flaky_job, job_id=job_id_1, should_fail=True)
+        actual_job_id_1 = await fastjob.enqueue(
+            flaky_job, job_id=job_id_1, should_fail=True
+        )
 
         # Process job using global worker (will retry until success or max attempts)
         await fastjob.run_worker(run_once=True)
-        
+
         # Check final status - should have succeeded after 3 attempts (2 failures + 1 success)
         async with global_pool.acquire() as conn:
             job_record = await conn.fetchrow(
@@ -162,11 +172,11 @@ async def test_retry_mechanism():
             assert job_record["status"] == "dead_letter"
             assert job_record["attempts"] == 4  # retries=3 means max_attempts=4
             assert "Always fails" in job_record["last_error"]
-            
+
         # Clean up global app
         if global_app.is_initialized:
             await global_app.close()
-            
+
     finally:
         await drop_test_database()
 
@@ -177,12 +187,12 @@ async def test_embedded_worker():
     try:
         # Configure global app to use test database
         fastjob.configure(database_url="postgresql://postgres@localhost/fastjob_test")
-        
+
         # Define sample job
         @fastjob.job(retries=5, args_model=SampleJobArgs)
         async def sample_job(x, y):
             return x + y
-        
+
         # Clear test table using global app pool
         global_app = fastjob._get_global_app()
         global_pool = await global_app.get_pool()
@@ -201,11 +211,11 @@ async def test_embedded_worker():
                 "SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id)
             )
             assert job_record["status"] == "done"
-            
+
         # Clean up global app
         if global_app.is_initialized:
             await global_app.close()
-            
+
     finally:
         await drop_test_database()
 
@@ -232,7 +242,7 @@ async def test_task_discovery():
     try:
         # Configure global app to use test database
         fastjob.configure(database_url="postgresql://postgres@localhost/fastjob_test")
-        
+
         # Clear test table using global app pool
         global_app = fastjob._get_global_app()
         global_pool = await global_app.get_pool()
@@ -266,12 +276,12 @@ async def test_task_discovery():
                 "SELECT * FROM fastjob_jobs WHERE job_name = 'jobs.my_tasks.discovered_job'"
             )
             assert job_record["status"] == "done"
-            
+
         # Clean up global app
         global_app = fastjob._get_global_app()
         if global_app.is_initialized:
             await global_app.close()
-            
+
     finally:
         # Restore original environment variables
         os.environ.clear()

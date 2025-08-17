@@ -2,11 +2,12 @@
 Test suite for CLI integration and real command execution
 """
 
-import pytest
-import subprocess
-import os
 import asyncio
+import os
+import subprocess
 from pathlib import Path
+
+import pytest
 
 # Ensure we're using test database
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
@@ -151,7 +152,7 @@ async def test_cli_error_handling():
 async def test_cli_with_real_jobs():
     """Test CLI with actual job processing"""
     # Database setup handled by conftest.py
-    
+
     # Create a simple job file for testing
     job_file_content = """
 import fastjob
@@ -176,12 +177,11 @@ async def cli_test_job(message: str):
 
         # Import the test job module
         import test_cli_jobs
+
         import fastjob
 
         # Enqueue a job
-        await fastjob.enqueue(
-            test_cli_jobs.cli_test_job, message="Hello CLI"
-        )
+        await fastjob.enqueue(test_cli_jobs.cli_test_job, message="Hello CLI")
 
         # Run start to process the job (with timeout as it may wait for jobs)
         result = run_cli_command(["start", "--run-once"], timeout=10)
@@ -204,7 +204,7 @@ async def cli_test_job(message: str):
 async def test_cli_output_formats():
     """Test CLI output formatting and verbosity"""
     # Database setup handled by conftest.py
-    
+
     # Test that CLI produces reasonable output
     result = run_cli_command(["setup"])
 
@@ -222,7 +222,7 @@ async def test_cli_output_formats():
 async def test_cli_concurrent_workers():
     """Test running multiple CLI workers concurrently"""
     # Database setup handled by conftest.py
-    
+
     # Create multiple worker processes
     worker_processes = []
 
@@ -255,7 +255,7 @@ async def test_cli_concurrent_workers():
 async def test_cli_signal_handling():
     """Test CLI signal handling and graceful shutdown"""
     # Database setup handled by conftest.py
-    
+
     # Start a worker process
     process = subprocess.Popen(
         ["python3", "-m", "fastjob.cli.main", "start", "--concurrency", "1"],
@@ -278,16 +278,17 @@ async def test_cli_signal_handling():
         # Process should exit cleanly
         assert process.returncode in [
             0,
-            -15,     # SIGTERM exit code on Unix
-            143,     # SIGTERM exit code (128 + 15)
-            130,     # SIGINT exit code (for fallback)
+            -15,  # SIGTERM exit code on Unix
+            143,  # SIGTERM exit code (128 + 15)
+            130,  # SIGINT exit code (for fallback)
         ]
-        
+
         # Check that graceful shutdown messaging appears in output
         combined_output = stdout + stderr
         shutdown_keywords = ["shutdown", "stopped", "graceful", "closing", "cleanup"]
-        assert any(keyword in combined_output.lower() for keyword in shutdown_keywords), \
-            f"Expected graceful shutdown message in output: {combined_output}"
+        assert any(
+            keyword in combined_output.lower() for keyword in shutdown_keywords
+        ), f"Expected graceful shutdown message in output: {combined_output}"
 
     except subprocess.TimeoutExpired:
         # Force kill if graceful shutdown failed
@@ -302,61 +303,70 @@ async def test_cli_database_url_parameter():
     # Create a test database with a different name
     test_db_name = "fastjob_cli_instance_test"
     test_db_url = f"postgresql://postgres@localhost/{test_db_name}"
-    
+
     # Create the test database
     subprocess.run(["createdb", test_db_name], check=False)  # Ignore if exists
-    
+
     try:
         # Test setup command with --database-url
         result = run_cli_command(["setup", "--database-url", test_db_url])
         assert result.returncode == 0
         assert "Database setup completed" in result.stdout or "Applied" in result.stdout
-        
+
         # Test start command with --database-url (run-once to exit quickly)
-        result = run_cli_command(["start", "--database-url", test_db_url, "--run-once"], timeout=5)
+        result = run_cli_command(
+            ["start", "--database-url", test_db_url, "--run-once"], timeout=5
+        )
         assert result.returncode == 0
-        
+
         # Verify the instance configuration is shown in output
         assert "Using instance-based configuration" in result.stdout or result.stderr
         assert test_db_url in result.stdout or result.stderr
-        
+
     finally:
         # Clean up the test database
         subprocess.run(["dropdb", test_db_name], check=False)
 
 
-@pytest.mark.asyncio 
+@pytest.mark.asyncio
 async def test_cli_database_url_vs_environment():
     """Test that --database-url parameter overrides environment variable"""
     test_db_name = "fastjob_cli_override_test"
     test_db_url = f"postgresql://postgres@localhost/{test_db_name}"
-    
+
     # Create the test database
     subprocess.run(["createdb", test_db_name], check=False)
-    
+
     # Store original environment
     original_env = os.environ.copy()
-    
+
     try:
         # Set environment variable to different database
-        os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
-        
+        os.environ["FASTJOB_DATABASE_URL"] = (
+            "postgresql://postgres@localhost/fastjob_test"
+        )
+
         # Use --database-url parameter to override environment
         result = run_cli_command(["setup", "--database-url", test_db_url])
         assert result.returncode == 0
-        
+
         # Start worker with overridden database URL
-        result = run_cli_command([
-            "start", 
-            "--database-url", test_db_url, 
-            "--run-once", 
-            "--concurrency", "1"
-        ], timeout=5)
+        result = run_cli_command(
+            [
+                "start",
+                "--database-url",
+                test_db_url,
+                "--run-once",
+                "--concurrency",
+                "1",
+            ],
+            timeout=5,
+        )
         assert result.returncode == 0
-        
+
         # Should show instance-based configuration, not global
         assert "Using instance-based configuration" in result.stdout or result.stderr
-        
+
     finally:
         # Restore original environment
         os.environ.clear()
@@ -369,15 +379,16 @@ async def test_cli_database_url_vs_environment():
 async def test_cli_database_url_validation():
     """Test CLI handles invalid database URLs gracefully"""
     # Test with invalid database URL
-    result = run_cli_command([
-        "setup", 
-        "--database-url", "invalid://not-a-real-database"
-    ], expect_success=False, timeout=10)
-    
+    result = run_cli_command(
+        ["setup", "--database-url", "invalid://not-a-real-database"],
+        expect_success=False,
+        timeout=10,
+    )
+
     # Should fail gracefully
     assert result.returncode != 0
     # Should show configuration error (our new error handling)
-    # Error message can be in stdout or stderr  
+    # Error message can be in stdout or stderr
     combined_output = (result.stdout + result.stderr).lower()
     assert "error" in combined_output or "failed" in combined_output
 
@@ -388,6 +399,6 @@ async def test_cli_without_database_url_uses_global():
     # Run start without --database-url parameter
     result = run_cli_command(["start", "--run-once"], timeout=5)
     assert result.returncode == 0
-    
+
     # Should show global API configuration
     assert "Using global API configuration" in result.stdout or result.stderr

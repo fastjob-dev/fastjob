@@ -20,8 +20,8 @@ import pytest
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
 
 from fastjob.core.processor import process_jobs
-from fastjob.core.registry import clear_registry
 from fastjob.core.queue import enqueue_job
+from fastjob.core.registry import clear_registry
 from fastjob.db.connection import get_pool
 from tests.db_utils import clear_table
 
@@ -38,12 +38,12 @@ async def clean_db():
     """Clean database before each test"""
     pool = await get_pool()
     await clear_table(pool)
-    
+
     # Clear job registry to avoid cross-test pollution
     clear_registry()
-    
+
     yield
-    
+
     await clear_table(pool)
     clear_registry()
 
@@ -64,27 +64,40 @@ def result_file():
 @pytest.mark.asyncio
 async def test_process_jobs_all_queues(clean_db, result_file):
     """Test that queue=None processes jobs from any queue"""
-    
+
     # Register the job in each test
     from fastjob.core.registry import get_global_registry
+
     registry = get_global_registry()
     registry.register_job(write_to_file_job)
 
     pool = await get_pool()
-    
+
     # Enqueue jobs in different queues using legacy API
     async with pool.acquire() as conn:
         await enqueue_job(
-            pool, registry, write_to_file_job, 
-            queue="high", message="job1", result_file=result_file
+            pool,
+            registry,
+            write_to_file_job,
+            queue="high",
+            message="job1",
+            result_file=result_file,
         )
         await enqueue_job(
-            pool, registry, write_to_file_job,
-            queue="normal", message="job2", result_file=result_file
+            pool,
+            registry,
+            write_to_file_job,
+            queue="normal",
+            message="job2",
+            result_file=result_file,
         )
         await enqueue_job(
-            pool, registry, write_to_file_job,
-            queue="low", message="job3", result_file=result_file
+            pool,
+            registry,
+            write_to_file_job,
+            queue="low",
+            message="job3",
+            result_file=result_file,
         )
 
     # Process with queue=None should pick up any job
@@ -113,23 +126,32 @@ async def test_process_jobs_all_queues(clean_db, result_file):
 @pytest.mark.asyncio
 async def test_process_jobs_single_queue(clean_db, result_file):
     """Test that queue="name" processes only from that queue"""
-    
+
     # Register the job in each test
     from fastjob.core.registry import get_global_registry
+
     registry = get_global_registry()
     registry.register_job(write_to_file_job)
 
     pool = await get_pool()
-    
+
     # Enqueue jobs in different queues using legacy API
     async with pool.acquire() as conn:
         await enqueue_job(
-            pool, registry, write_to_file_job,
-            queue="target", message="target_job", result_file=result_file
+            pool,
+            registry,
+            write_to_file_job,
+            queue="target",
+            message="target_job",
+            result_file=result_file,
         )
         await enqueue_job(
-            pool, registry, write_to_file_job,
-            queue="other", message="other_job", result_file=result_file
+            pool,
+            registry,
+            write_to_file_job,
+            queue="other",
+            message="other_job",
+            result_file=result_file,
         )
 
     # Process only from "target" queue
@@ -151,26 +173,39 @@ async def test_process_jobs_single_queue(clean_db, result_file):
 @pytest.mark.asyncio
 async def test_process_jobs_multiple_queues(clean_db, result_file):
     """Test that queue=["q1", "q2"] processes from specified queues efficiently"""
-    
+
     # Register the job in each test
     from fastjob.core.registry import get_global_registry
+
     registry = get_global_registry()
     registry.register_job(write_to_file_job)
 
     pool = await get_pool()
-    
+
     # Enqueue jobs in different queues using legacy API
     await enqueue_job(
-        pool, registry, write_to_file_job,
-        queue="queue1", message="job1", result_file=result_file
+        pool,
+        registry,
+        write_to_file_job,
+        queue="queue1",
+        message="job1",
+        result_file=result_file,
     )
     await enqueue_job(
-        pool, registry, write_to_file_job,
-        queue="queue2", message="job2", result_file=result_file
+        pool,
+        registry,
+        write_to_file_job,
+        queue="queue2",
+        message="job2",
+        result_file=result_file,
     )
     await enqueue_job(
-        pool, registry, write_to_file_job,
-        queue="excluded", message="job3", result_file=result_file
+        pool,
+        registry,
+        write_to_file_job,
+        queue="excluded",
+        message="job3",
+        result_file=result_file,
     )
 
     # Process only from specified queues
@@ -195,39 +230,48 @@ async def test_process_jobs_multiple_queues(clean_db, result_file):
 @pytest.mark.asyncio
 async def test_priority_ordering_across_queues(clean_db, result_file):
     """Test that priority ordering works correctly across different queues"""
-    
+
     # Register the job in each test
     from fastjob.core.registry import get_global_registry
+
     registry = get_global_registry()
     registry.register_job(write_to_file_job)
 
     pool = await get_pool()
-    
+
     # Enqueue jobs with different priorities across different queues using legacy API
     # Lower priority number = higher priority
     await enqueue_job(
-        pool, registry, write_to_file_job,
+        pool,
+        registry,
+        write_to_file_job,
         queue="queueA",
         priority=100,
         message="medium_A",
         result_file=result_file,
     )
     await enqueue_job(
-        pool, registry, write_to_file_job,
+        pool,
+        registry,
+        write_to_file_job,
         queue="queueB",
         priority=50,
         message="high_B",
         result_file=result_file,
     )
     await enqueue_job(
-        pool, registry, write_to_file_job,
+        pool,
+        registry,
+        write_to_file_job,
         queue="queueA",
         priority=200,
         message="low_A",
         result_file=result_file,
     )
     await enqueue_job(
-        pool, registry, write_to_file_job,
+        pool,
+        registry,
+        write_to_file_job,
         queue="queueC",
         priority=25,
         message="highest_C",
@@ -240,19 +284,21 @@ async def test_priority_ordering_across_queues(clean_db, result_file):
         processed2 = await process_jobs(conn, ["queueA", "queueB", "queueC"])
         processed3 = await process_jobs(conn, ["queueA", "queueB", "queueC"])
         processed4 = await process_jobs(conn, ["queueA", "queueB", "queueC"])
-        processed5 = await process_jobs(conn, ["queueA", "queueB", "queueC"])  # Should be False
-    
+        processed5 = await process_jobs(
+            conn, ["queueA", "queueB", "queueC"]
+        )  # Should be False
+
     assert processed1 is True
     assert processed2 is True
     assert processed3 is True
     assert processed4 is True
     assert processed5 is False  # No more jobs
-    
+
     # Check results file - priority order should be preserved
     with open(result_file, "r") as f:
         results = f.read().strip().split("\n")
         processed_messages = [msg for msg in results if msg]
-        
+
     # Should be processed in priority order regardless of queue (priority: 25, 50, 100, 200)
     assert processed_messages == ["highest_C", "high_B", "medium_A", "low_A"]
 
@@ -260,9 +306,10 @@ async def test_priority_ordering_across_queues(clean_db, result_file):
 @pytest.mark.asyncio
 async def test_scheduled_jobs_across_queues(clean_db, result_file):
     """Test that scheduled jobs work correctly across different queues"""
-    
+
     # Register the job in each test
     from fastjob.core.registry import get_global_registry
+
     registry = get_global_registry()
     registry.register_job(write_to_file_job)
 
@@ -271,14 +318,18 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
 
     # Schedule jobs in different queues using legacy API
     await enqueue_job(
-        pool, registry, write_to_file_job,
+        pool,
+        registry,
+        write_to_file_job,
         queue="queue1",
         scheduled_at=future_time,
         message="scheduled1",
         result_file=result_file,
     )
     await enqueue_job(
-        pool, registry, write_to_file_job,
+        pool,
+        registry,
+        write_to_file_job,
         queue="queue2",
         scheduled_at=future_time,
         message="scheduled2",
@@ -298,7 +349,7 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
         processed2 = await process_jobs(conn, None)
         processed3 = await process_jobs(conn, None)
         processed4 = await process_jobs(conn, None)  # Should be False
-    
+
     assert processed2 is True
     assert processed3 is True
     assert processed4 is False
@@ -316,17 +367,22 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
 @pytest.mark.asyncio
 async def test_empty_queue_list(clean_db, result_file):
     """Test that empty queue list behaves correctly"""
-    
+
     # Register the job in each test
     from fastjob.core.registry import get_global_registry
+
     registry = get_global_registry()
     registry.register_job(write_to_file_job)
 
     pool = await get_pool()
-    
+
     await enqueue_job(
-        pool, registry, write_to_file_job,
-        queue="some_queue", message="job1", result_file=result_file
+        pool,
+        registry,
+        write_to_file_job,
+        queue="some_queue",
+        message="job1",
+        result_file=result_file,
     )
 
     # Empty queue list should not process any jobs
@@ -345,18 +401,21 @@ async def test_empty_queue_list(clean_db, result_file):
 @pytest.mark.asyncio
 async def test_queue_efficiency_single_query(clean_db):
     """Test that multiple queues use single efficient query"""
-    
+
     # Register the job in each test
     from fastjob.core.registry import get_global_registry
+
     registry = get_global_registry()
     registry.register_job(write_to_file_job)
 
     pool = await get_pool()
-    
+
     # Enqueue jobs in multiple queues
     for i in range(3):
         await enqueue_job(
-            pool, registry, write_to_file_job,
+            pool,
+            registry,
+            write_to_file_job,
             queue=f"queue{i}",
             message=f"job{i}",
             result_file="/tmp/test",

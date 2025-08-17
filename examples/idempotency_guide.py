@@ -10,7 +10,8 @@ import asyncio
 import hashlib
 import json
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel
 
 import fastjob

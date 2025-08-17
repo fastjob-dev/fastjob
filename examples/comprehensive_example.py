@@ -15,11 +15,11 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timedelta
+
 from pydantic import BaseModel
 
 import fastjob
 from fastjob import FastJob
-
 
 # Configure basic logging
 logging.basicConfig(
@@ -94,14 +94,19 @@ async def flaky_task(task_id: str, fail_rate: float = 0.3):
 
 # Create separate FastJob instances for different services
 analytics_service = FastJob(
-    database_url=os.environ.get("ANALYTICS_DATABASE_URL", "postgresql://localhost/analytics_service"),
-    service_name="analytics"
+    database_url=os.environ.get(
+        "ANALYTICS_DATABASE_URL", "postgresql://localhost/analytics_service"
+    ),
+    service_name="analytics",
 )
 
 user_service = FastJob(
-    database_url=os.environ.get("USER_DATABASE_URL", "postgresql://localhost/user_service"), 
-    service_name="users"
+    database_url=os.environ.get(
+        "USER_DATABASE_URL", "postgresql://localhost/user_service"
+    ),
+    service_name="users",
 )
+
 
 # Instance API jobs - registered with specific instances
 @analytics_service.job(queue="events", priority=20)
@@ -109,13 +114,13 @@ async def track_user_event(event_name: str, user_id: str, properties: dict) -> d
     """Track user analytics event - Instance API"""
     print(f"📊 [ANALYTICS] Tracking event: {event_name} for user {user_id}")
     await asyncio.sleep(0.3)
-    
+
     return {
         "event_name": event_name,
         "user_id": user_id,
         "properties": properties,
         "tracked_at": datetime.now().isoformat(),
-        "service": "analytics"
+        "service": "analytics",
     }
 
 
@@ -124,12 +129,12 @@ async def update_user_profile(user_id: str, profile_data: dict) -> dict:
     """Update user profile - Instance API"""
     print(f"👤 [USER_SERVICE] Updating profile for user: {user_id}")
     await asyncio.sleep(0.5)
-    
+
     return {
         "user_id": user_id,
         "profile_data": profile_data,
         "updated_at": datetime.now().isoformat(),
-        "service": "users"
+        "service": "users",
     }
 
 
@@ -137,31 +142,31 @@ async def update_user_profile(user_id: str, profile_data: dict) -> dict:
 async def user_activity_workflow(user_id: str, activity_type: str) -> dict:
     """Cross-service workflow using Instance API"""
     print(f"🔄 [WORKFLOW] Starting activity workflow for user: {user_id}")
-    
+
     # Update user profile (same service)
     profile_job = await user_service.enqueue(
         update_user_profile,
         user_id=user_id,
-        profile_data={"last_activity": activity_type, "timestamp": datetime.now().isoformat()}
+        profile_data={
+            "last_activity": activity_type,
+            "timestamp": datetime.now().isoformat(),
+        },
     )
-    
+
     # Track analytics event (different service)
     analytics_job = await analytics_service.enqueue(
         track_user_event,
         event_name=f"user_{activity_type}",
         user_id=user_id,
-        properties={"workflow": "user_activity", "initiated_by": "system"}
+        properties={"workflow": "user_activity", "initiated_by": "system"},
     )
-    
+
     return {
         "workflow_id": f"activity_{user_id}_{int(datetime.now().timestamp())}",
         "user_id": user_id,
         "activity_type": activity_type,
-        "jobs": {
-            "profile_update": profile_job,
-            "analytics_tracking": analytics_job
-        },
-        "status": "initiated"
+        "jobs": {"profile_update": profile_job, "analytics_tracking": analytics_job},
+        "status": "initiated",
     }
 
 
@@ -280,21 +285,21 @@ async def main():
 
     # Stop Global API worker
     await fastjob.stop_embedded_worker()
-    
+
     # ========================================
     # INSTANCE API DEMONSTRATION
     # ========================================
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("INSTANCE API DEMONSTRATION")
-    print("="*60)
+    print("=" * 60)
     print("Using separate databases for different services")
-    
+
     # Start embedded workers for Instance API services
     print("\n11. Starting Instance API Workers...")
     analytics_service.start_embedded_worker()
     user_service.start_embedded_worker()
-    
+
     try:
         # Instance API job examples
         print("\n12. Analytics Service Job (Instance API):")
@@ -302,66 +307,68 @@ async def main():
             track_user_event,
             event_name="page_view",
             user_id="user_123",
-            properties={"page": "/dashboard", "duration": 45}
+            properties={"page": "/dashboard", "duration": 45},
         )
         print(f"   Analytics job ID: {analytics_job}")
-        
+
         print("\n13. User Service Job (Instance API):")
         user_job = await user_service.enqueue(
             update_user_profile,
             user_id="user_123",
-            profile_data={"theme": "dark", "language": "en"}
+            profile_data={"theme": "dark", "language": "en"},
         )
         print(f"   User service job ID: {user_job}")
-        
+
         print("\n14. Cross-Service Workflow (Instance API):")
         workflow_job = await user_service.enqueue(
-            user_activity_workflow,
-            user_id="user_456",
-            activity_type="login"
+            user_activity_workflow, user_id="user_456", activity_type="login"
         )
         print(f"   Workflow job ID: {workflow_job}")
-        
+
         # Let Instance API jobs process
         print("\n   Processing Instance API jobs for 8 seconds...")
         await asyncio.sleep(8)
-        
+
         # Show service-specific statistics
         print("\n15. Instance API Service Statistics:")
-        
+
         analytics_stats = await analytics_service.get_queue_stats()
         user_stats = await user_service.get_queue_stats()
-        
+
         print("   Analytics Service:")
         if analytics_stats:
             for queue in analytics_stats:
-                print(f"     Queue '{queue['queue']}': {queue['total_jobs']} total, {queue['done']} done")
+                print(
+                    f"     Queue '{queue['queue']}': {queue['total_jobs']} total, {queue['done']} done"
+                )
         else:
             print("     No statistics available yet")
-            
+
         print("   User Service:")
         if user_stats:
             for queue in user_stats:
-                print(f"     Queue '{queue['queue']}': {queue['total_jobs']} total, {queue['done']} done")
+                print(
+                    f"     Queue '{queue['queue']}': {queue['total_jobs']} total, {queue['done']} done"
+                )
         else:
             print("     No statistics available yet")
-        
+
     finally:
         # Stop Instance API workers and close connections
         print("\n   Stopping Instance API workers...")
         await analytics_service.stop_embedded_worker()
         await user_service.stop_embedded_worker()
-        
+
         await analytics_service.close()
         await user_service.close()
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("SUMMARY")
-    print("="*60)
+    print("=" * 60)
     print("✅ Global API: Great for single-service apps")
     print("✅ Instance API: Great for microservices and multi-tenant apps")
     print("✅ Both APIs working!")
-    
+
     print("\n✅ Comprehensive example completed!")
     print("\nAPI Comparison:")
     print("  Global API (single database):")
@@ -372,12 +379,14 @@ async def main():
     print("    - Create FastJob instances with separate database URLs")
     print("    - Complete isolation between services")
     print("    - Perfect for microservices architecture")
-    
+
     print("\nTo explore more:")
     print("- Run 'fastjob status' to see Global API queue statistics")
     print("- Run 'fastjob status --database-url $SERVICE_DB' for Instance API")
     print("- Run 'fastjob worker --concurrency 4' for Global API production")
-    print("- Run 'fastjob worker --database-url $SERVICE_DB --concurrency 2' for Instance API")
+    print(
+        "- Run 'fastjob worker --database-url $SERVICE_DB --concurrency 2' for Instance API"
+    )
     print("- Try pip install fastjob-pro for dashboard and advanced scheduling")
 
 

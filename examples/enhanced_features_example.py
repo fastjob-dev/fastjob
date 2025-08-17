@@ -22,6 +22,7 @@ Getting started:
 import asyncio
 import time
 from typing import Optional
+
 from pydantic import BaseModel
 
 import fastjob

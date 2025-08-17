@@ -1,8 +1,10 @@
 import asyncio
-import pytest
 import os
-from tests.db_utils import create_test_database, clear_table
+
+import pytest
+
 from fastjob.db.connection import close_pool
+from tests.db_utils import clear_table, create_test_database
 
 # Ensure test database URL is set
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"
@@ -32,9 +34,10 @@ async def clean_test_state():
 
     # Clean up any existing connections
     await close_pool()
-    
+
     # Configure global FastJob app to use test database consistently
     import fastjob
+
     fastjob.configure(database_url="postgresql://postgres@localhost/fastjob_test")
 
     # Get fresh pool and clear any existing jobs (use global app's pool for consistency)

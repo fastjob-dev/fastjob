@@ -2,9 +2,11 @@
 Test compliance with FastJob feature specification
 """
 
-import pytest
 import os
 import uuid
+
+import pytest
+
 import fastjob
 
 # Use test database
@@ -25,7 +27,7 @@ async def advanced_job(message: str, count: int):
 @pytest.mark.asyncio
 async def test_free_features_compliance():
     """Test all Free Features (Phase 1 - MVP) compliance"""
-    
+
     # ✅ PostgreSQL-based job persistence (JSON payload)
     job_id = await fastjob.enqueue(basic_job, message="test persistence")
 
@@ -38,7 +40,10 @@ async def test_free_features_compliance():
             "SELECT * FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id)
         )
         assert job_record is not None
-        assert job_record["job_name"] == "tests.integration.global_api.test_specification_compliance.basic_job"
+        assert (
+            job_record["job_name"]
+            == "tests.integration.global_api.test_specification_compliance.basic_job"
+        )
         assert '"message": "test persistence"' in job_record["args"]
 
     # ✅ Job processing with retry mechanism
@@ -55,6 +60,7 @@ async def test_free_features_compliance():
 
     # ✅ Internal DB connection pooling
     from fastjob.db.connection import get_pool
+
     pool = await get_pool()
     assert pool is not None
 
@@ -62,20 +68,16 @@ async def test_free_features_compliance():
 @pytest.mark.asyncio
 async def test_pro_features_compliance():
     """Test Pro Features (Phase 2) compliance"""
-    
+
     # ✅ Priority queues (numeric)
-    await fastjob.enqueue(
-        advanced_job, priority=10, message="high priority", count=1
-    )
-    
-    await fastjob.enqueue(
-        advanced_job, priority=100, message="low priority", count=1
-    )
+    await fastjob.enqueue(advanced_job, priority=10, message="high priority", count=1)
+
+    await fastjob.enqueue(advanced_job, priority=100, message="low priority", count=1)
 
     # Verify priority ordering in database
     global_app = fastjob._get_global_app()
     app_pool = await global_app.get_pool()
-    
+
     async with app_pool.acquire() as conn:
         jobs = await conn.fetch(
             "SELECT priority FROM fastjob_jobs WHERE status = 'queued' ORDER BY priority ASC"
@@ -90,7 +92,7 @@ async def test_pro_features_compliance():
 @pytest.mark.asyncio
 async def test_dsl_usage_examples_compliance():
     """Test that DSL usage examples from spec work exactly as documented"""
-    
+
     # Spec Example 1: Registering a Job
     @fastjob.job(retries=3)
     async def send_email(to: str, subject: str, body: str):
@@ -108,16 +110,17 @@ async def test_dsl_usage_examples_compliance():
 
     # Spec Example 3: Scheduling a Job (basic)
     from datetime import datetime, timedelta
+
     future_time = datetime.now() + timedelta(minutes=30)
-    
+
     scheduled_job_id = await fastjob.schedule(
-        send_email, 
+        send_email,
         run_at=future_time,
-        to="user@example.com", 
-        subject="Scheduled", 
-        body="Scheduled message"
+        to="user@example.com",
+        subject="Scheduled",
+        body="Scheduled message",
     )
-    
+
     # Verify job was scheduled
     scheduled_status = await fastjob.get_job_status(scheduled_job_id)
     assert scheduled_status is not None
@@ -130,24 +133,25 @@ async def test_cli_commands_compliance():
     """Test CLI commands match specification"""
     # Test that CLI module exists and has correct structure
     from fastjob.cli.main import main
+
     assert main is not None
 
     # Test CLI commands exist
-    from fastjob.cli.registry import get_cli_registry
     from fastjob.cli.commands.core import register_core_commands
-    
+    from fastjob.cli.registry import get_cli_registry
+
     # Register core commands and verify they exist
     register_core_commands()
     registry = get_cli_registry()
     commands = registry.get_all_commands()
     command_names = [cmd.name for cmd in commands]
-    
+
     # Test database setup command (was "migrate")
     assert "setup" in command_names
-    
-    # Test worker start command (was "worker") 
+
+    # Test worker start command (was "worker")
     assert "start" in command_names
-    
+
     # Verify command structure includes expected features
     start_cmd = next((cmd for cmd in commands if cmd.name == "start"), None)
     assert start_cmd is not None
@@ -157,11 +161,11 @@ async def test_cli_commands_compliance():
 @pytest.mark.asyncio
 async def test_database_schema_compliance():
     """Test database schema matches specification"""
-    
+
     # Use global app pool for consistency
     global_app = fastjob._get_global_app()
     app_pool = await global_app.get_pool()
-    
+
     async with app_pool.acquire() as conn:
         # Check table exists
         table_exists = await conn.fetchval(
@@ -182,11 +186,11 @@ async def test_database_schema_compliance():
             WHERE table_name = 'fastjob_jobs'
             """
         )
-        
+
         column_names = {col["column_name"] for col in columns}
         required_columns = {
             "id",
-            "job_name", 
+            "job_name",
             "args",
             "status",
             "queue",
@@ -199,7 +203,9 @@ async def test_database_schema_compliance():
             "updated_at",
         }
 
-        assert required_columns.issubset(column_names), f"Missing columns: {required_columns - column_names}"
+        assert required_columns.issubset(
+            column_names
+        ), f"Missing columns: {required_columns - column_names}"
 
 
 @pytest.mark.asyncio
@@ -210,8 +216,8 @@ async def test_project_structure_compliance():
 
     required_dirs = [
         "core",  # Task decorator, queue logic, processor loop
-        "cli",   # CLI commands
-        "db",    # Database utilities
+        "cli",  # CLI commands
+        "db",  # Database utilities
     ]
 
     for dir_name in required_dirs:
@@ -220,7 +226,7 @@ async def test_project_structure_compliance():
 
     # Check key modules exist
     assert hasattr(fastjob, "job")
-    assert hasattr(fastjob, "enqueue") 
+    assert hasattr(fastjob, "enqueue")
     assert hasattr(fastjob, "schedule")
     assert hasattr(fastjob, "run_worker")
     assert hasattr(fastjob, "get_job_status")

@@ -5,16 +5,16 @@ Test suite for errors.py module - comprehensive coverage for FastJob exception h
 import pytest
 
 from fastjob.errors import (
-    FastJobError,
+    ConfigurationError,
     DatabaseConnectionError,
+    FastJobError,
+    JobExecutionError,
     JobNotFoundError,
     JobValidationError,
-    JobExecutionError,
-    QueueError,
-    WorkerError,
-    ConfigurationError,
-    SchedulingError,
     MigrationError,
+    QueueError,
+    SchedulingError,
+    WorkerError,
     create_user_friendly_error,
 )
 

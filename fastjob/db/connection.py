@@ -8,8 +8,8 @@ from typing import AsyncContextManager, Optional
 
 import asyncpg
 
+from fastjob.config import FastJobConfigError, get_database_url
 from fastjob.settings import get_settings
-from fastjob.config import get_database_url, FastJobConfigError
 
 # Global pool for backward compatibility
 _pool: Optional[asyncpg.Pool] = None
@@ -23,11 +23,11 @@ _context_pool: contextvars.ContextVar[Optional[asyncpg.Pool]] = contextvars.Cont
 def _get_database_url() -> str:
     """
     Get database URL with priority for enhanced configuration.
-    
+
     Priority:
     1. Enhanced configuration (if configured)
     2. Pydantic settings (fallback)
-    
+
     Returns:
         Database URL string
     """

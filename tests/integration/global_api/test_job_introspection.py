@@ -13,7 +13,9 @@ import fastjob
 async def process_test_jobs():
     """Helper to process jobs from all test queues using global API"""
     # Use the global API worker to process jobs from all relevant test queues
-    await fastjob.run_worker(run_once=True, queues=["test", "unique_test", "priority_test", "default"])
+    await fastjob.run_worker(
+        run_once=True, queues=["test", "unique_test", "priority_test", "default"]
+    )
 
 
 # Set up test environment
@@ -59,7 +61,9 @@ class TestJobIntrospection:
         assert status is not None
         assert status["id"] == job_id
         # Job name includes the full module path
-        expected_job_name = "tests.integration.global_api.test_job_introspection.simple_task"
+        expected_job_name = (
+            "tests.integration.global_api.test_job_introspection.simple_task"
+        )
         assert status["job_name"] == expected_job_name
         assert status["status"] == "queued"
         assert status["queue"] == "test"
@@ -214,8 +218,11 @@ class TestJobListing:
         # Enqueue jobs - one will be processed, one scheduled for future
         await fastjob.enqueue(simple_task, message="immediate_job")
         from datetime import datetime, timedelta
+
         future_time = datetime.now() + timedelta(hours=1)
-        await fastjob.enqueue(simple_task, message="future_job", scheduled_at=future_time)
+        await fastjob.enqueue(
+            simple_task, message="future_job", scheduled_at=future_time
+        )
 
         # Process jobs - only immediate job should be processed
         await process_test_jobs()

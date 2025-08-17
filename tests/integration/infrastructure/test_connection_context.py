@@ -22,22 +22,23 @@ Example usage for better test isolation:
         # Each test gets its own database context
 """
 
-import pytest
 import asyncio
-import asyncpg
 import os
 
+import asyncpg
+import pytest
+
+import fastjob.settings
 from fastjob.db.connection import (
-    get_pool,
-    close_pool,
-    connection_context,
     DatabaseContext,
-    create_pool,
     _context_pool,
     _pool,
+    close_pool,
+    connection_context,
+    create_pool,
+    get_pool,
 )
-from tests.db_utils import create_test_database, clear_table
-import fastjob.settings
+from tests.db_utils import clear_table, create_test_database
 
 
 @pytest.mark.asyncio
@@ -345,7 +346,6 @@ async def test_database_context_exception_handling():
     # Reset global state
     await close_pool()
 
-
     try:
         async with DatabaseContext():
             # Simulate an exception
@@ -376,7 +376,7 @@ async def test_fastjob_integration_with_contexts():
     await create_test_database()
 
     # Import here to avoid circular imports during test discovery
-    from fastjob import job, enqueue
+    from fastjob import enqueue, job
     from fastjob.core.processor import process_jobs
 
     @job()

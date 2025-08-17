@@ -5,10 +5,12 @@ These tests cover underlying systems (CLI, connections, LISTEN/NOTIFY, etc.)
 that support both APIs and may use mixed patterns.
 """
 
-import pytest
 import os
-from tests.db_utils import create_test_database
+
+import pytest
+
 from fastjob.db.connection import close_pool
+from tests.db_utils import create_test_database
 
 # Ensure test database URL is set
 os.environ["FASTJOB_DATABASE_URL"] = "postgresql://postgres@localhost/fastjob_test"

@@ -3,12 +3,13 @@ Complete integration test for CLI plugin system across all FastJob packages
 Tests the full plugin discovery and CLI integration workflow
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 # Import CLI components
 from fastjob.cli.main import load_plugin_commands, main
-from fastjob.plugins import get_plugin_manager, discover_and_load_plugins
+from fastjob.plugins import discover_and_load_plugins, get_plugin_manager
 
 
 class TestCompletePluginSystemIntegration:
@@ -204,8 +205,9 @@ class TestPluginArchitectureCompliance:
     def test_cli_system_is_extensible(self):
         """Test that CLI system is properly extensible"""
         # Test that the main CLI uses the plugin system for extensibility
-        import fastjob.cli.main
         import inspect
+
+        import fastjob.cli.main
 
         # The main module should import and use the plugin system
         source = inspect.getsource(fastjob.cli.main)

@@ -6,8 +6,8 @@ This module provides common patterns for database operations to reduce the
 """
 
 import logging
-from typing import Any, Callable, List, Optional, TypeVar
 from contextlib import asynccontextmanager
+from typing import Any, Callable, List, Optional, TypeVar
 
 import asyncpg
 
@@ -22,16 +22,16 @@ T = TypeVar("T")
 async def get_connection(pool: Optional[asyncpg.Pool] = None):
     """
     Get a database connection from the pool.
-    
+
     Args:
         pool: Optional pool to use. If None, uses the default pool.
-        
+
     Yields:
         asyncpg.Connection: Database connection
     """
     if pool is None:
         pool = await get_pool()
-    
+
     async with pool.acquire() as conn:
         yield conn
 
@@ -44,13 +44,13 @@ async def execute_with_connection(
 ) -> Any:
     """
     Execute a query with automatic connection management.
-    
+
     Args:
         query: SQL query to execute
         *args: Query parameters
         pool: Optional pool to use
         set_timezone: Whether to set timezone to UTC
-        
+
     Returns:
         Query result
     """
@@ -68,13 +68,13 @@ async def fetchrow_with_connection(
 ) -> Optional[asyncpg.Record]:
     """
     Fetch a single row with automatic connection management.
-    
+
     Args:
         query: SQL query to execute
         *args: Query parameters
         pool: Optional pool to use
         set_timezone: Whether to set timezone to UTC
-        
+
     Returns:
         Single row or None
     """
@@ -92,13 +92,13 @@ async def fetchall_with_connection(
 ) -> List[asyncpg.Record]:
     """
     Fetch all rows with automatic connection management.
-    
+
     Args:
         query: SQL query to execute
         *args: Query parameters
         pool: Optional pool to use
         set_timezone: Whether to set timezone to UTC
-        
+
     Returns:
         List of rows
     """
@@ -116,13 +116,13 @@ async def fetchval_with_connection(
 ) -> Any:
     """
     Fetch a single value with automatic connection management.
-    
+
     Args:
         query: SQL query to execute
         *args: Query parameters
         pool: Optional pool to use
         set_timezone: Whether to set timezone to UTC
-        
+
     Returns:
         Single value
     """
@@ -139,12 +139,12 @@ async def execute_in_transaction(
 ) -> Any:
     """
     Execute operations within a transaction with automatic connection management.
-    
+
     Args:
         operations: Async function that takes a connection and performs operations
         pool: Optional pool to use
         set_timezone: Whether to set timezone to UTC
-        
+
     Returns:
         Result from operations function
     """
@@ -163,20 +163,20 @@ async def execute_batch_with_connection(
 ) -> List[Any]:
     """
     Execute multiple queries with automatic connection management.
-    
+
     Args:
         queries: List of (query, *args) tuples
         pool: Optional pool to use
         set_timezone: Whether to set timezone to UTC
         use_transaction: Whether to wrap in a transaction
-        
+
     Returns:
         List of query results
     """
     async with get_connection(pool) as conn:
         if set_timezone:
             await conn.execute("SET timezone = 'UTC'")
-            
+
         if use_transaction:
             async with conn.transaction():
                 results = []
@@ -199,24 +199,24 @@ async def execute_batch_with_connection(
 class DatabaseHelper:
     """
     Database helper class for consistent database operations.
-    
+
     This class provides a higher-level interface for common database patterns
     while maintaining the flexibility of direct connection usage when needed.
     """
-    
+
     def __init__(self, pool: Optional[asyncpg.Pool] = None):
         """
         Initialize the database helper.
-        
+
         Args:
             pool: Optional pool to use. If None, uses the default pool.
         """
         self.pool = pool
-    
+
     async def get_connection(self):
         """Get a connection context manager."""
         return get_connection(self.pool)
-    
+
     async def execute(
         self,
         query: str,
@@ -227,7 +227,7 @@ class DatabaseHelper:
         return await execute_with_connection(
             query, *args, pool=self.pool, set_timezone=set_timezone
         )
-    
+
     async def fetchrow(
         self,
         query: str,
@@ -238,7 +238,7 @@ class DatabaseHelper:
         return await fetchrow_with_connection(
             query, *args, pool=self.pool, set_timezone=set_timezone
         )
-    
+
     async def fetchall(
         self,
         query: str,
@@ -249,7 +249,7 @@ class DatabaseHelper:
         return await fetchall_with_connection(
             query, *args, pool=self.pool, set_timezone=set_timezone
         )
-    
+
     async def fetchval(
         self,
         query: str,
@@ -260,7 +260,7 @@ class DatabaseHelper:
         return await fetchval_with_connection(
             query, *args, pool=self.pool, set_timezone=set_timezone
         )
-    
+
     async def execute_in_transaction(
         self,
         operations: Callable[[asyncpg.Connection], Any],
@@ -270,7 +270,7 @@ class DatabaseHelper:
         return await execute_in_transaction(
             operations, pool=self.pool, set_timezone=set_timezone
         )
-    
+
     async def execute_batch(
         self,
         queries: List[tuple],
@@ -279,7 +279,10 @@ class DatabaseHelper:
     ) -> List[Any]:
         """Execute multiple queries."""
         return await execute_batch_with_connection(
-            queries, pool=self.pool, set_timezone=set_timezone, use_transaction=use_transaction
+            queries,
+            pool=self.pool,
+            set_timezone=set_timezone,
+            use_transaction=use_transaction,
         )
 
 

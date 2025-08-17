@@ -12,7 +12,7 @@ from typing import List, Optional, Union
 
 import asyncpg
 
-from fastjob.core.registry import get_job, JobRegistry
+from fastjob.core.registry import JobRegistry, get_job
 
 # Basic logging for free edition
 logger = logging.getLogger(__name__)
@@ -54,12 +54,12 @@ async def _fetch_and_lock_job(
 ) -> Optional[dict]:
     """
     Fetch and lock a job from the queue in a transaction.
-    
+
     Args:
         conn: Database connection
         queue: Queue specification
         heartbeat: Optional worker heartbeat for tracking
-        
+
     Returns:
         Job record dict or None if no jobs available
     """
@@ -136,7 +136,7 @@ async def _fetch_and_lock_job(
             """,
                 job_id,
             )
-    
+
     return dict(job_record)
 
 
@@ -145,17 +145,17 @@ async def _execute_job_safely(
 ) -> tuple[bool, Optional[str]]:
     """
     Execute a job function safely with proper error handling.
-    
+
     Args:
         job_record: Job record from database
         job_meta: Job metadata from registry
-        
+
     Returns:
         tuple: (success: bool, error_message: Optional[str])
     """
     job_record["id"]
     job_record["max_attempts"]
-    
+
     # Parse job arguments with corruption handling
     try:
         args_data = json.loads(job_record["args"])
@@ -175,7 +175,9 @@ async def _execute_job_safely(
             validated_args = args_model(**args_data).model_dump()
         except (TypeError, ValueError, AttributeError) as validation_error:
             # This will be handled by the caller
-            raise ValueError(f"Corrupted argument data: {str(validation_error)}") from validation_error
+            raise ValueError(
+                f"Corrupted argument data: {str(validation_error)}"
+            ) from validation_error
     else:
         validated_args = args_data
 
@@ -190,7 +192,9 @@ async def _execute_job_safely(
             or "parameter" in str(func_error).lower()
         ):
             # This will be handled by the caller as corruption
-            raise ValueError(f"Function argument mismatch: {str(func_error)}") from func_error
+            raise ValueError(
+                f"Function argument mismatch: {str(func_error)}"
+            ) from func_error
         else:
             # Regular TypeError/AttributeError from job logic - should retry
             return False, str(func_error)
@@ -208,7 +212,7 @@ async def _update_job_status(
 ) -> None:
     """
     Update job status in database based on execution result.
-    
+
     Args:
         conn: Database connection
         job_record: Original job record
@@ -219,7 +223,7 @@ async def _update_job_status(
     job_id = job_record["id"]
     attempts = job_record["attempts"]
     max_attempts = job_record["max_attempts"]
-    
+
     async with conn.transaction():
         if success:
             # Handle job result TTL setting
@@ -303,7 +307,7 @@ async def process_jobs(
 ) -> bool:
     """
     Process a single job from the queue(s).
-    
+
     For compatibility with global API, this now checks the global app's registry
     in addition to the legacy global registry.
 
@@ -380,7 +384,7 @@ async def process_jobs_with_registry(
 ) -> bool:
     """
     Instance-based job processing with explicit JobRegistry.
-    
+
     Process a single job from the queue(s) using a specific job registry instance.
     This enables instance-based FastJob applications with isolated job registries.
 
@@ -388,7 +392,7 @@ async def process_jobs_with_registry(
         conn: Database connection
         job_registry: JobRegistry instance to use for job lookup
         queue: Queue specification:
-               - None: Process from any queue (no filtering)  
+               - None: Process from any queue (no filtering)
                - str: Process from single specific queue
                - List[str]: Process from multiple specific queues efficiently
         heartbeat: Optional worker heartbeat tracker
@@ -428,7 +432,9 @@ async def process_jobs_with_registry(
             f"Job {job_name} not registered in this FastJob instance.",
             job_id,
         )
-        logger.error(f"Job {job_name} not registered in instance registry - moved to dead letter queue")
+        logger.error(
+            f"Job {job_name} not registered in instance registry - moved to dead letter queue"
+        )
         return True
 
     # Step 3: Execute the job function OUTSIDE of any transaction
@@ -463,9 +469,9 @@ async def run_worker(
         database_url: Database URL to connect to
         queues: List of queue names to process. If None, discovers and processes all available queues
     """
+    from fastjob.core.heartbeat import WorkerHeartbeat, cleanup_stale_workers
     from fastjob.db.connection import create_pool
     from fastjob.settings import get_settings
-    from fastjob.core.heartbeat import WorkerHeartbeat, cleanup_stale_workers
 
     db_url = database_url or get_settings().database_url
     try:
@@ -516,6 +522,7 @@ async def run_worker(
                     # Track last cleanup time for periodic cleanup
                     last_cleanup = 0
                     from fastjob.settings import get_settings
+
                     cleanup_interval = get_settings().cleanup_interval
 
                     while True:
@@ -557,7 +564,8 @@ async def run_worker(
 
                                         # Clean up stale workers
                                         await cleanup_stale_workers(
-                                            pool, stale_threshold_seconds=get_settings().stale_worker_threshold
+                                            pool,
+                                            stale_threshold_seconds=get_settings().stale_worker_threshold,
                                         )
 
                                         last_cleanup = current_time
@@ -574,7 +582,8 @@ async def run_worker(
                                 try:
                                     # Wait for notification with configurable timeout
                                     await asyncio.wait_for(
-                                        notification_event.wait(), timeout=get_settings().notification_timeout
+                                        notification_event.wait(),
+                                        timeout=get_settings().notification_timeout,
                                     )
                                     notification_event.clear()  # Reset for next notification
                                     logger.debug("Received job notification")
@@ -598,39 +607,43 @@ async def run_worker(
                     await pool.release(listen_conn)
 
             # Setup signal handlers for graceful shutdown
-            from ..utils.signals import setup_global_signal_handlers, cleanup_global_signal_handlers
-            
+            from ..utils.signals import (
+                cleanup_global_signal_handlers,
+                setup_global_signal_handlers,
+            )
+
             shutdown_event = asyncio.Event()
             signal_handler = setup_global_signal_handlers(shutdown_event)
-            
+
             # Start multiple worker tasks for concurrency
             tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
 
             try:
                 # Create a task that waits for shutdown signal
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
-                worker_task = asyncio.create_task(asyncio.gather(*tasks, return_exceptions=True))
-                
+                worker_task = asyncio.create_task(
+                    asyncio.gather(*tasks, return_exceptions=True)
+                )
+
                 # Wait for either workers to complete or shutdown signal
                 done, pending = await asyncio.wait(
-                    [worker_task, shutdown_task],
-                    return_when=asyncio.FIRST_COMPLETED
+                    [worker_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
                 # If shutdown was requested, cancel workers
                 if shutdown_task in done:
                     logger.info("Graceful shutdown initiated by signal...")
                     for task in tasks:
                         if not task.done():
                             task.cancel()
-                    
+
                     # Wait for workers to finish gracefully
                     await asyncio.gather(*tasks, return_exceptions=True)
-                
+
                 # Cancel pending tasks
                 for task in pending:
                     task.cancel()
-                    
+
             except KeyboardInterrupt:
                 # Fallback handler for direct KeyboardInterrupt (shouldn't happen with signals)
                 logger.info("Shutting down workers...")
@@ -640,7 +653,7 @@ async def run_worker(
             finally:
                 # Cleanup signal handlers
                 cleanup_global_signal_handlers()
-                
+
                 # Stop heartbeat system
                 await heartbeat.stop_heartbeat()
     finally:

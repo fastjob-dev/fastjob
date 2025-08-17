@@ -2,19 +2,21 @@
 Tests for the improved embedded worker implementation
 """
 
-import pytest
 import asyncio
 import os
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 import fastjob
 from fastjob.local import (
-    start_embedded_worker,
-    stop_embedded_worker,
-    start_embedded_worker_async,
-    is_embedded_worker_running,
     get_embedded_worker_status,
+    is_embedded_worker_running,
+    start_embedded_worker,
+    start_embedded_worker_async,
+    stop_embedded_worker,
 )
+
 # Database setup handled by conftest.py
 
 # Set up test environment

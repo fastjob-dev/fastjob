@@ -2,10 +2,10 @@
 Test suite for utils/hashing.py module - comprehensive coverage for job argument hashing.
 """
 
-import json
 import hashlib
+import json
 
-from fastjob.utils.hashing import compute_args_hash, args_are_equivalent
+from fastjob.utils.hashing import args_are_equivalent, compute_args_hash
 
 
 class TestComputeArgsHash:

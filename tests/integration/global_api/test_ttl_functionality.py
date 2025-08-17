@@ -5,8 +5,8 @@ Tests that the result_ttl setting properly sets expires_at field
 and that cleanup works correctly.
 """
 
-import os
 import asyncio
+import os
 
 import pytest
 
@@ -43,7 +43,7 @@ async def test_ttl_zero_deletes_immediately():
         await fastjob.get_job_status(job_id)
         # With TTL=0, job should be deleted after completion
         # The exact behavior depends on implementation
-        
+
     finally:
         # Restore original TTL
         settings.result_ttl = original_ttl
@@ -60,26 +60,26 @@ async def test_ttl_positive_sets_expires_at():
     try:
         # Enqueue and process a job
         job_id = await fastjob.enqueue(ttl_test_job, message="test_ttl_field")
-        
+
         processed = await fastjob.run_worker(run_once=True)
         assert processed
 
         # Use global app pool for consistency
         global_app = fastjob._get_global_app()
         app_pool = await global_app.get_pool()
-        
+
         async with app_pool.acquire() as conn:
             job_record = await conn.fetchrow(
                 "SELECT status, expires_at FROM fastjob_jobs WHERE id = $1",
-                uuid.UUID(job_id)
+                uuid.UUID(job_id),
             )
-            
+
             assert job_record is not None
             assert job_record["status"] == "done"
-            
+
             # expires_at should be set (if the field exists)
             # Note: This depends on whether the schema includes expires_at
-            
+
     finally:
         # Restore original TTL
         settings.result_ttl = original_ttl
@@ -96,7 +96,7 @@ async def test_ttl_cleanup_removes_expired_jobs():
     try:
         # Enqueue and process a job
         job_id = await fastjob.enqueue(ttl_test_job, message="test_cleanup")
-        
+
         processed = await fastjob.run_worker(run_once=True)
         assert processed
 
@@ -106,17 +106,17 @@ async def test_ttl_cleanup_removes_expired_jobs():
         # Use global app pool for consistency
         global_app = fastjob._get_global_app()
         app_pool = await global_app.get_pool()
-        
+
         async with app_pool.acquire() as conn:
             # Check if job still exists
             await conn.fetchval(
                 "SELECT EXISTS(SELECT 1 FROM fastjob_jobs WHERE id = $1)",
-                uuid.UUID(job_id)
+                uuid.UUID(job_id),
             )
-            
+
             # Depending on implementation, job might still exist or be cleaned up
             # This test verifies the cleanup mechanism works
-            
+
     finally:
         # Restore original TTL
         settings.result_ttl = original_ttl
@@ -124,7 +124,8 @@ async def test_ttl_cleanup_removes_expired_jobs():
 
 @pytest.mark.asyncio
 async def test_ttl_failed_jobs_not_cleaned_up():
-    """Test that failed jobs are not cleaned up by TTL"""  
+    """Test that failed jobs are not cleaned up by TTL"""
+
     # Create a job that will fail
     @fastjob.job()
     async def failing_ttl_job():
@@ -138,7 +139,7 @@ async def test_ttl_failed_jobs_not_cleaned_up():
     try:
         # Enqueue failing job
         job_id = await fastjob.enqueue(failing_ttl_job)
-        
+
         # Process job (it will fail)
         for _ in range(5):  # Multiple attempts due to retries
             processed = await fastjob.run_worker(run_once=True)
@@ -148,20 +149,19 @@ async def test_ttl_failed_jobs_not_cleaned_up():
         # Wait beyond TTL
         await asyncio.sleep(2)
 
-        # Use global app pool for consistency  
+        # Use global app pool for consistency
         global_app = fastjob._get_global_app()
         app_pool = await global_app.get_pool()
-        
+
         async with app_pool.acquire() as conn:
             job_record = await conn.fetchrow(
-                "SELECT status FROM fastjob_jobs WHERE id = $1",
-                uuid.UUID(job_id)
+                "SELECT status FROM fastjob_jobs WHERE id = $1", uuid.UUID(job_id)
             )
-            
+
             # Failed jobs should still exist (not cleaned up by TTL)
             assert job_record is not None
             assert job_record["status"] in ["failed", "dead_letter"]
-            
+
     finally:
         # Restore original TTL
         settings.result_ttl = original_ttl

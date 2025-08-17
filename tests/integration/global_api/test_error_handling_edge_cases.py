@@ -5,8 +5,8 @@ Tests FastJob's robustness under various failure conditions.
 Rewritten to use global API consistently and be reliable.
 """
 
-import os
 import asyncio
+import os
 
 import pytest
 
@@ -27,7 +27,7 @@ async def database_dependent_job(data: str):
 async def memory_intensive_job(size_mb: int = 1):
     """Job that consumes memory (reduced for testing)"""
     # Allocate small amount of memory for testing
-    data = ['x' * 1024 for _ in range(size_mb)]
+    data = ["x" * 1024 for _ in range(size_mb)]
     await asyncio.sleep(0.01)  # Simulate processing
     return f"processed {len(data)} KB"
 
@@ -83,11 +83,11 @@ class TestDatabaseConnectionFailures:
     async def test_database_timeout_during_processing(self):
         """Test database timeout during job processing"""
         job_id = await fastjob.enqueue(timeout_job)
-        
+
         # Process job - should handle timeout gracefully by failing the job
         processed = await fastjob.run_worker(run_once=True)
         assert processed  # Job was processed (failed gracefully)
-        
+
         # Verify job failed
         status = await fastjob.get_job_status(job_id)
         assert status["status"] in ["failed", "dead_letter"]
@@ -100,11 +100,11 @@ class TestPluginLoadingFailures:
     async def test_plugin_loading_failure(self):
         """Test job execution when plugin loading fails"""
         job_id = await fastjob.enqueue(database_dependent_job, data="test_message")
-        
+
         # Process job normally - plugin issues shouldn't prevent core job processing
         processed = await fastjob.run_worker(run_once=True)
         assert processed
-        
+
         # Verify job succeeded
         status = await fastjob.get_job_status(job_id)
         assert status["status"] == "done"
@@ -113,11 +113,11 @@ class TestPluginLoadingFailures:
     async def test_plugin_hook_timeout(self):
         """Test plugin hook that times out"""
         job_id = await fastjob.enqueue(database_dependent_job, data="timeout_test")
-        
+
         # Process job normally
         processed = await fastjob.run_worker(run_once=True)
         assert processed
-        
+
         # Verify job succeeded
         status = await fastjob.get_job_status(job_id)
         assert status["status"] == "done"
@@ -130,10 +130,10 @@ class TestMemoryPressureScenarios:
     async def test_memory_intensive_job_execution(self):
         """Test execution of memory-intensive jobs"""
         job_id = await fastjob.enqueue(memory_intensive_job, size_mb=1)
-        
+
         processed = await fastjob.run_worker(run_once=True)
         assert processed  # Job should complete successfully
-        
+
         # Verify job succeeded
         status = await fastjob.get_job_status(job_id)
         assert status["status"] == "done"
@@ -142,10 +142,10 @@ class TestMemoryPressureScenarios:
     async def test_simulated_memory_failure(self):
         """Test job that simulates memory failure"""
         job_id = await fastjob.enqueue(memory_failure_job)
-        
+
         processed = await fastjob.run_worker(run_once=True)
         assert processed  # Should handle memory error gracefully
-        
+
         # Verify job failed
         status = await fastjob.get_job_status(job_id)
         assert status["status"] in ["failed", "dead_letter"]
@@ -158,13 +158,13 @@ class TestHighVolumeErrorScenarios:
     async def test_job_failure_handling(self):
         """Test handling of job failures"""
         job_id = await fastjob.enqueue(bad_job)
-        
+
         # Process multiple times to handle retries
         for _ in range(5):
             processed = await fastjob.run_worker(run_once=True)
             if not processed:
                 break
-        
+
         # Verify job eventually failed
         status = await fastjob.get_job_status(job_id)
         assert status["status"] in ["failed", "dead_letter"]
@@ -177,7 +177,7 @@ class TestHighVolumeErrorScenarios:
         for i in range(10):
             job_id = await fastjob.enqueue(good_job, data=f"job_{i}")
             job_ids.append(job_id)
-        
+
         # Process all jobs
         processed_count = 0
         for _ in range(20):  # More attempts than jobs to handle all processing
@@ -186,7 +186,7 @@ class TestHighVolumeErrorScenarios:
                 processed_count += 1
             else:
                 break
-        
+
         # Verify all jobs were processed
         assert processed_count >= 1  # At least some jobs processed
 
@@ -198,10 +198,10 @@ class TestSystemResourceFailures:
     async def test_simulated_system_error(self):
         """Test job that simulates system error"""
         job_id = await fastjob.enqueue(system_error_job)
-        
+
         processed = await fastjob.run_worker(run_once=True)
         assert processed  # Should handle system error gracefully
-        
+
         # Verify job failed
         status = await fastjob.get_job_status(job_id)
         assert status["status"] in ["failed", "dead_letter"]
@@ -210,10 +210,10 @@ class TestSystemResourceFailures:
     async def test_simulated_file_descriptor_error(self):
         """Test job that simulates file descriptor exhaustion"""
         job_id = await fastjob.enqueue(fd_error_job)
-        
+
         processed = await fastjob.run_worker(run_once=True)
         assert processed  # Should handle FD error gracefully
-        
+
         # Verify job failed
         status = await fastjob.get_job_status(job_id)
         assert status["status"] in ["failed", "dead_letter"]
@@ -226,13 +226,13 @@ class TestGracefulDegradation:
     async def test_job_recovery_after_failure(self):
         """Test that jobs can recover after transient failures"""
         job_id = await fastjob.enqueue(sometimes_failing_job, attempt_number=1)
-        
+
         # Process job multiple times to handle retries
         for _ in range(5):
             processed = await fastjob.run_worker(run_once=True)
             if not processed:
                 break
-        
+
         # Job should eventually succeed or fail gracefully
         status = await fastjob.get_job_status(job_id)
         assert status["status"] in ["done", "failed", "dead_letter"]
@@ -242,16 +242,16 @@ class TestGracefulDegradation:
         """Test that errors in one job don't affect others"""
         good_job_id = await fastjob.enqueue(good_job, data="test")
         bad_job_id = await fastjob.enqueue(bad_job)
-        
+
         # Process both jobs
         for _ in range(10):  # Multiple attempts to handle retries
             processed = await fastjob.run_worker(run_once=True)
             if not processed:
                 break
-        
+
         # Verify good job succeeded and bad job failed
         good_status = await fastjob.get_job_status(good_job_id)
         bad_status = await fastjob.get_job_status(bad_job_id)
-        
+
         assert good_status["status"] == "done"
         assert bad_status["status"] in ["failed", "dead_letter"]

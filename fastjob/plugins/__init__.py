@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-
 class PluginManager:
     """Manages FastJob plugins using entry points."""
 

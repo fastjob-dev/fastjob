@@ -49,7 +49,7 @@ def demo_automatic_loading():
     print("-" * 40)
 
     # Import testing utilities
-    from fastjob.testing import disable_plugins, no_plugins, is_plugin_loading_disabled
+    from fastjob.testing import disable_plugins, is_plugin_loading_disabled, no_plugins
 
     # Check initial state
     print(

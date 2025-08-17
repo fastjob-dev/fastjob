@@ -5,22 +5,22 @@ Free Edition - Core job processing functionality
 Simple global usage:
 
     import fastjob
-    
+
     @fastjob.job()
     async def my_job(message: str):
         print(f"Processing: {message}")
-    
+
     await fastjob.enqueue(my_job, message="Hello World")
     await fastjob.run_worker()
 
 Instance-based usage for advanced scenarios:
 
     app = FastJob(database_url="postgresql://localhost/myapp")
-    
+
     @app.job()
     async def my_job(message: str):
         print(f"Processing: {message}")
-    
+
     await app.enqueue(my_job, message="Hello World")
     await app.run_worker()
 
@@ -38,33 +38,38 @@ For testing scenarios where you want to disable plugin loading, use:
         pass
 """
 
-# FastJob instance-based client
-from .client import FastJob
+from datetime import datetime, timedelta
 
 # Type hints
 from typing import Optional, Union
-from datetime import datetime, timedelta
 
-# Development helpers  
-from .settings import is_dev_mode
+# FastJob instance-based client
+from .client import FastJob
+
+# Enhanced configuration system
+from .config import (
+    FastJobAlreadyConfiguredError,
+    FastJobConfigError,
+    FastJobError,
+)
+from .config import configure as enhanced_configure
+from .config import get_config as get_enhanced_config
+from .config import (
+    get_database_url,
+    get_setting,
+)
+from .config import is_configured as is_enhanced_configured
+from .config import (
+    reset_config,
+)
 from .plugins import (
     diagnose_plugins,
     get_plugin_status,
     has_plugin_feature,
 )
 
-# Enhanced configuration system
-from .config import (
-    configure as enhanced_configure,
-    get_config as get_enhanced_config,
-    reset_config,
-    is_configured as is_enhanced_configured,
-    get_setting,
-    get_database_url,
-    FastJobError,
-    FastJobConfigError,
-    FastJobAlreadyConfiguredError,
-)
+# Development helpers
+from .settings import is_dev_mode
 
 __version__ = "0.1.0"
 
@@ -83,13 +88,13 @@ __all__ = [
     "FastJob",
     # Global convenience API
     "job",
-    "enqueue", 
+    "enqueue",
     "schedule",
     "run_worker",
     "configure",
     # Enhanced configuration
     "enhanced_configure",
-    "get_enhanced_config", 
+    "get_enhanced_config",
     "reset_config",
     "is_enhanced_configured",
     "get_setting",
@@ -100,22 +105,22 @@ __all__ = [
     "FastJobAlreadyConfiguredError",
     # Job management API
     "get_job_status",
-    "cancel_job", 
+    "cancel_job",
     "retry_job",
     "delete_job",
     "list_jobs",
     "get_queue_stats",
     # Embedded worker for development
     "start_embedded_worker",
-    "stop_embedded_worker", 
+    "stop_embedded_worker",
     "is_embedded_worker_running",
     "start_embedded_worker_async",
     "get_embedded_worker_status",
     # Development helpers
-    "is_dev_mode", 
+    "is_dev_mode",
     # Plugin system
     "has_plugin_feature",
-    "get_plugin_status", 
+    "get_plugin_status",
     "diagnose_plugins",
 ]
 
@@ -195,38 +200,38 @@ def load_plugins():
 def _get_global_app() -> FastJob:
     """
     Get or create the global FastJob application instance.
-    
+
     This enables a global convenience API.
     The global app is created lazily on first use with default settings.
     If the existing global app is closed, a new one is created automatically.
     """
     global _global_app, _global_job_registry
-    
+
     if _global_app is None or _global_app.is_closed:
         # Create new global app with default settings
         # If previous app was closed, this replaces it
         _global_app = FastJob()
-        
+
         # Re-register all global jobs with the new instance
         for job_func, job_kwargs in _global_job_registry:
             _global_app.job(**job_kwargs)(job_func)
-        
+
     return _global_app
 
 
 def configure(**kwargs):
     """
     Configure FastJob with enhanced validation and better developer experience.
-    
+
     This function now provides enhanced configuration with immediate validation,
     clear error messages, and better integration with the settings system.
-    
+
     Args:
         **kwargs: Configuration options
-        
+
     Examples:
         import fastjob
-        
+
         # Enhanced configuration with validation
         fastjob.configure(
             database_url="postgresql://localhost/myapp",
@@ -234,15 +239,15 @@ def configure(**kwargs):
             pool_size=30,
             dev_mode=True
         )
-        
+
         @fastjob.job()
         async def my_job():
             pass
     """
     global _global_app, _global_job_registry
-    
+
     # Try enhanced configuration first for better error messages
-    if 'database_url' in kwargs:
+    if "database_url" in kwargs:
         try:
             enhanced_configure(**kwargs)
         except FastJobAlreadyConfiguredError:
@@ -252,39 +257,40 @@ def configure(**kwargs):
         except FastJobConfigError as e:
             # Re-raise configuration errors with better context
             raise ValueError(f"FastJob configuration error: {e}")
-    
+
     # Close old global app if it exists and is initialized
     if _global_app is not None and _global_app.is_initialized:
         # Schedule cleanup for the old app (but don't wait for it in sync context)
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if not loop.is_closed():
                 loop.create_task(_global_app.close())
         except RuntimeError:
             pass  # No event loop, skip cleanup
-    
+
     # Map enhanced config to FastJob constructor parameters
     fastjob_kwargs = {}
     enhanced_to_fastjob = {
-        'worker_concurrency': 'default_concurrency',
-        'max_retries': 'default_max_retries', 
-        'default_queue': 'default_queues',
-        'pool_size': 'db_pool_max_size',
+        "worker_concurrency": "default_concurrency",
+        "max_retries": "default_max_retries",
+        "default_queue": "default_queues",
+        "pool_size": "db_pool_max_size",
     }
-    
+
     for key, value in kwargs.items():
         # Map enhanced config keys to FastJob constructor keys
         fastjob_key = enhanced_to_fastjob.get(key, key)
-        if key == 'default_queue':
+        if key == "default_queue":
             # Convert single queue to list for FastJob constructor
             fastjob_kwargs[fastjob_key] = [value] if isinstance(value, str) else value
         else:
             fastjob_kwargs[fastjob_key] = value
-    
+
     # Create new global app with configuration
     _global_app = FastJob(**fastjob_kwargs)
-    
+
     # Re-register all global jobs with the new instance
     for job_func, job_kwargs in _global_job_registry:
         _global_app.job(**job_kwargs)(job_func)
@@ -293,48 +299,48 @@ def configure(**kwargs):
 def job(**kwargs):
     """
     Global job decorator.
-    
+
     Equivalent to app.job() but uses the global FastJob instance.
     Jobs are automatically re-registered if the global instance is recreated.
-    
+
     Args:
         **kwargs: Job configuration options
-        
+
     Examples:
         import fastjob
-        
+
         @fastjob.job(retries=5, queue="urgent")
         async def send_email(to: str, subject: str):
             # send email
             pass
     """
     global _global_job_registry
-    
+
     def decorator(func):
         # Store job info for re-registration if global app is recreated
         _global_job_registry.append((func, kwargs))
-        
+
         # Register with current global app
         app = _get_global_app()
         return app.job(**kwargs)(func)
-    
+
     return decorator
 
 
 async def enqueue(job_func, **kwargs):
     """
     Enqueue a job using the global FastJob instance.
-    
+
     Args:
         job_func: Job function to enqueue
         **kwargs: Job arguments and options
-        
+
     Returns:
         Job UUID
-        
+
     Examples:
         import fastjob
-        
+
         job_id = await fastjob.enqueue(send_email, to="user@example.com", subject="Hello")
     """
     app = _get_global_app()
@@ -342,35 +348,35 @@ async def enqueue(job_func, **kwargs):
 
 
 async def schedule(
-    job_func, 
+    job_func,
     *,
     run_at: Optional[datetime] = None,
     run_in: Optional[Union[int, float, timedelta]] = None,
-    **kwargs
+    **kwargs,
 ):
     """
     Schedule a job for future execution using the global FastJob instance.
-    
+
     Args:
-        job_func: The job function to schedule  
+        job_func: The job function to schedule
         run_at: Schedule job at specific datetime (absolute time)
         run_in: Schedule job after delay (relative time - seconds or timedelta)
         **kwargs: Arguments to pass to the job
-        
+
     Returns:
         str: Job UUID
-        
+
     Examples:
         import fastjob
         from datetime import datetime, timedelta
-        
+
         # Schedule at specific datetime (absolute)
         run_time = datetime.now() + timedelta(hours=1)
         job_id = await fastjob.schedule(send_email, run_at=run_time, to="user@example.com")
-        
+
         # Schedule in 1 hour using seconds (relative)
         job_id = await fastjob.schedule(send_email, run_in=3600, to="user@example.com")
-        
+
         # Schedule in 1 hour using timedelta (relative)
         job_id = await fastjob.schedule(send_email, run_in=timedelta(hours=1), to="user@example.com")
     """
@@ -378,7 +384,7 @@ async def schedule(
         raise ValueError("Must specify either run_at (absolute) or run_in (relative)")
     if run_at is not None and run_in is not None:
         raise ValueError("Cannot specify both run_at and run_in")
-        
+
     if run_in is not None:
         # Convert run_in to absolute time
         if isinstance(run_in, (int, float)):
@@ -387,7 +393,7 @@ async def schedule(
             run_at = datetime.now() + run_in
         else:
             raise ValueError("run_in must be int, float (seconds), or timedelta")
-    
+
     # Use enqueue with scheduled_at to go through the global registry
     return await enqueue(job_func, scheduled_at=run_at, **kwargs)
 
@@ -399,44 +405,43 @@ async def run_worker(
 ):
     """
     Run a worker using the global FastJob instance.
-    
+
     Args:
         concurrency: Number of concurrent job processing tasks
         run_once: If True, process available jobs once and exit
         queues: List of queue names to process. None means all queues.
-        
+
     Examples:
         import fastjob
-        
+
         # Run worker with default settings
         await fastjob.run_worker()
-        
+
         # Run with custom concurrency and specific queues
         await fastjob.run_worker(concurrency=8, queues=["urgent", "default"])
     """
     app = _get_global_app()
     return await app.run_worker(
-        concurrency=concurrency,
-        run_once=run_once,
-        queues=queues
+        concurrency=concurrency, run_once=run_once, queues=queues
     )
 
 
 # Job Management API
 
+
 async def get_job_status(job_id: str):
     """
     Get status information for a specific job.
-    
+
     Args:
         job_id: UUID of the job to check
-        
+
     Returns:
         Dict with job information or None if job not found
-        
+
     Examples:
         import fastjob
-        
+
         job_id = await fastjob.enqueue(my_job, arg="value")
         status = await fastjob.get_job_status(job_id)
         print(f"Job status: {status['status']}")
@@ -448,16 +453,16 @@ async def get_job_status(job_id: str):
 async def cancel_job(job_id: str):
     """
     Cancel a queued job.
-    
+
     Args:
         job_id: UUID of the job to cancel
-        
+
     Returns:
         True if job was cancelled, False if job wasn't found or already processed
-        
+
     Examples:
         import fastjob
-        
+
         job_id = await fastjob.enqueue(my_job, arg="value")
         cancelled = await fastjob.cancel_job(job_id)
         if cancelled:
@@ -470,16 +475,16 @@ async def cancel_job(job_id: str):
 async def retry_job(job_id: str):
     """
     Retry a failed job.
-    
+
     Args:
         job_id: UUID of the job to retry
-        
+
     Returns:
         True if job was queued for retry, False if job wasn't found or can't be retried
-        
+
     Examples:
         import fastjob
-        
+
         # Retry a failed job
         retried = await fastjob.retry_job(job_id)
         if retried:
@@ -492,16 +497,16 @@ async def retry_job(job_id: str):
 async def delete_job(job_id: str):
     """
     Delete a job from the queue.
-    
+
     Args:
         job_id: UUID of the job to delete
-        
+
     Returns:
         True if job was deleted, False if job wasn't found
-        
+
     Examples:
         import fastjob
-        
+
         deleted = await fastjob.delete_job(job_id)
         if deleted:
             print("Job deleted successfully")
@@ -511,29 +516,26 @@ async def delete_job(job_id: str):
 
 
 async def list_jobs(
-    queue: str = None,
-    status: str = None,
-    limit: int = 100,
-    offset: int = 0
+    queue: str = None, status: str = None, limit: int = 100, offset: int = 0
 ):
     """
     List jobs with optional filtering.
-    
+
     Args:
         queue: Filter by queue name
         status: Filter by job status
         limit: Maximum number of jobs to return
         offset: Number of jobs to skip
-        
+
     Returns:
         List of job dictionaries
-        
+
     Examples:
         import fastjob
-        
+
         # List all jobs
         jobs = await fastjob.list_jobs()
-        
+
         # List failed jobs in specific queue
         failed_jobs = await fastjob.list_jobs(queue="urgent", status="dead_letter")
     """
@@ -544,13 +546,13 @@ async def list_jobs(
 async def get_queue_stats():
     """
     Get statistics for all queues.
-    
+
     Returns:
         List of dictionaries with queue statistics
-        
+
     Examples:
         import fastjob
-        
+
         stats = await fastjob.get_queue_stats()
         for queue_stats in stats:
             print(f"Queue {queue_stats['queue']}: {queue_stats['queued']} jobs")
@@ -561,9 +563,9 @@ async def get_queue_stats():
 
 # Import embedded worker functions for development
 from .local import (
-    start_embedded_worker,
-    stop_embedded_worker,
-    is_embedded_worker_running,
-    start_embedded_worker_async,
     get_embedded_worker_status,
+    is_embedded_worker_running,
+    start_embedded_worker,
+    start_embedded_worker_async,
+    stop_embedded_worker,
 )

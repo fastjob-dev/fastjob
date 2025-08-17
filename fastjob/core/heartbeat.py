@@ -5,13 +5,13 @@ Provides worker registration, heartbeat updates, and monitoring capabilities
 for production deployments.
 """
 
+import asyncio
+import json
 import os
 import platform
 import uuid
-import asyncio
-import json
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 try:
     import psutil
@@ -151,6 +151,7 @@ class WorkerHeartbeat:
             except Exception as e:
                 logger.warning(f"Heartbeat failed: {e}")
                 from fastjob.settings import get_settings
+
                 await asyncio.sleep(
                     min(interval, get_settings().stale_worker_threshold / 10)
                 )  # Backoff but don't wait too long
@@ -224,8 +225,9 @@ async def cleanup_stale_workers(
     """
     if stale_threshold_seconds is None:
         from fastjob.settings import get_settings
+
         stale_threshold_seconds = get_settings().stale_worker_threshold
-        
+
     try:
         async with pool.acquire() as conn:
             # Mark stale workers as stopped

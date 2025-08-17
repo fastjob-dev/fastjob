@@ -2,13 +2,14 @@
 Comprehensive tests for CLI plugin system across all FastJob packages
 """
 
-import pytest
 import subprocess
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Import the CLI components
 from fastjob.cli.main import load_plugin_commands, main
-from fastjob.plugins import get_plugin_manager, discover_and_load_plugins
+from fastjob.plugins import discover_and_load_plugins, get_plugin_manager
 
 
 class TestCLIPluginDiscovery:
@@ -258,7 +259,7 @@ class TestCLIColorSystem:
 
     def test_color_module_import(self):
         """Test that CLI color module can be imported"""
-        from fastjob.cli.colors import print_header, print_status, StatusIcon
+        from fastjob.cli.colors import StatusIcon, print_header, print_status
 
         # Should be able to import and use
         assert callable(print_header)
@@ -267,7 +268,7 @@ class TestCLIColorSystem:
 
     def test_status_functions_work(self):
         """Test that status functions work without crashing"""
-        from fastjob.cli.colors import print_status, StatusIcon
+        from fastjob.cli.colors import StatusIcon, print_status
 
         # Should not crash
         print_status("Test message", "info")
@@ -297,8 +298,9 @@ class TestCLIArchitectureCompliance:
     def test_cli_does_not_hardcode_plugin_commands(self):
         """Test that CLI doesn't hardcode plugin-specific commands"""
         # The main CLI file should not directly import Pro/Enterprise modules
-        from fastjob.cli import main
         import inspect
+
+        from fastjob.cli import main
 
         source = inspect.getsource(main)
 

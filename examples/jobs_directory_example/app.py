@@ -60,7 +60,7 @@ async def main():
         print("\n🖼️  Image Processing Jobs")
         print("-" * 25)
 
-        from jobs.images import resize_image, generate_thumbnails
+        from jobs.images import generate_thumbnails, resize_image
 
         job_id = await fastjob.enqueue(
             resize_image, image_path="/uploads/photo.jpg", width=800, height=600

@@ -11,7 +11,6 @@ from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
 
-
 class HealthStatus(Enum):
     """Health check status values."""
 
@@ -33,13 +32,16 @@ class HealthCheck:
         interval: Optional[float] = None,
     ):
         from fastjob.settings import get_settings
+
         settings = get_settings()
-        
+
         self.name = name
         self.check_func = check_func
         self.timeout = timeout if timeout is not None else settings.health_check_timeout
         self.critical = critical
-        self.interval = interval if interval is not None else settings.health_monitoring_interval
+        self.interval = (
+            interval if interval is not None else settings.health_monitoring_interval
+        )
         self.last_check = None
         self.last_status = HealthStatus.UNKNOWN
         self.last_message = "Not checked yet"
@@ -184,6 +186,7 @@ class HealthMonitor:
 
         if interval is None:
             from fastjob.settings import get_settings
+
             interval = get_settings().health_monitoring_interval
 
         self._monitoring = True
@@ -197,7 +200,10 @@ class HealthMonitor:
                 except Exception as e:
                     self.logger.error(f"Health monitoring error: {e}")
                     from fastjob.settings import get_settings
-                    await asyncio.sleep(get_settings().health_error_retry_delay)  # Short retry interval on error
+
+                    await asyncio.sleep(
+                        get_settings().health_error_retry_delay
+                    )  # Short retry interval on error
 
         self._monitor_task = asyncio.create_task(monitor_loop())
 
@@ -224,7 +230,7 @@ _health_monitor = HealthMonitor()
 async def check_database_health() -> Tuple[HealthStatus, str]:
     """Check database connectivity and basic operations."""
     from fastjob.db.context import get_context_pool
-    
+
     try:
         pool = await get_context_pool()
         async with pool.acquire() as conn:
@@ -262,7 +268,7 @@ async def check_database_health() -> Tuple[HealthStatus, str]:
 async def check_job_processing_health() -> Tuple[HealthStatus, str]:
     """Check job processing health by looking at recent activity."""
     from fastjob.db.context import get_context_pool
-    
+
     try:
         pool = await get_context_pool()
         async with pool.acquire() as conn:
@@ -277,8 +283,9 @@ async def check_job_processing_health() -> Tuple[HealthStatus, str]:
             )
 
             from fastjob.settings import get_settings
+
             settings = get_settings()
-            
+
             if stuck_jobs > settings.stuck_jobs_threshold:
                 return HealthStatus.DEGRADED, f"{stuck_jobs} jobs may be stuck in queue"
 
@@ -326,8 +333,9 @@ async def check_job_processing_health() -> Tuple[HealthStatus, str]:
 async def check_system_resources() -> Tuple[HealthStatus, str]:
     """Check system resource usage."""
     from fastjob.settings import get_settings
+
     settings = get_settings()
-    
+
     try:
         import psutil
 
@@ -360,8 +368,9 @@ async def check_system_resources() -> Tuple[HealthStatus, str]:
 def setup_default_health_checks():
     """Set up default health checks for FastJob."""
     from fastjob.settings import get_settings
+
     settings = get_settings()
-    
+
     _health_monitor.add_check(
         name="database",
         check_func=check_database_health,
@@ -373,15 +382,18 @@ def setup_default_health_checks():
     _health_monitor.add_check(
         name="job_processing",
         check_func=check_job_processing_health,
-        timeout=settings.health_check_timeout * 2,  # Longer timeout for job processing check
+        timeout=settings.health_check_timeout
+        * 2,  # Longer timeout for job processing check
         critical=False,
-        interval=settings.health_monitoring_interval * 2,  # Less frequent for non-critical check
+        interval=settings.health_monitoring_interval
+        * 2,  # Less frequent for non-critical check
     )
 
     _health_monitor.add_check(
         name="system_resources",
         check_func=check_system_resources,
-        timeout=settings.health_check_timeout * 0.6,  # Shorter timeout for resource check
+        timeout=settings.health_check_timeout
+        * 0.6,  # Shorter timeout for resource check
         critical=False,
         interval=settings.health_monitoring_interval,
     )
@@ -422,7 +434,7 @@ async def is_ready() -> bool:
         True if ready, False otherwise
     """
     from fastjob.db.context import get_context_pool
-    
+
     try:
         pool = await get_context_pool()
         async with pool.acquire() as conn:

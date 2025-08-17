@@ -6,16 +6,16 @@ correctly for FastJob to be truly production-ready.
 """
 
 import asyncio
-import pytest
-import signal
 import os
-import time
+import signal
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
+import pytest
 
 import fastjob
 from fastjob.db.connection import DatabaseContext
@@ -249,22 +249,24 @@ if __name__ == "__main__":
                 # Check how many jobs are still queued using global app pool
                 global_app = fastjob._get_global_app()
                 app_pool = await global_app.get_pool()
-                
+
                 async with app_pool.acquire() as conn:
                     queued_count = await conn.fetchval(
                         "SELECT COUNT(*) FROM fastjob_jobs WHERE status = 'queued'"
                     )
-                
+
                 if queued_count == 0:
                     print(f"All jobs processed after {attempt + 1} attempts")
                     break
-                    
+
                 # Run worker to process available jobs
                 processed = await fastjob.run_worker(run_once=True)
                 if not processed:
-                    print(f"Worker found no jobs at attempt {attempt + 1}, but {queued_count} jobs remain queued")
+                    print(
+                        f"Worker found no jobs at attempt {attempt + 1}, but {queued_count} jobs remain queued"
+                    )
                     break
-                    
+
                 await asyncio.sleep(0.01)  # Small delay
 
             # Count completed jobs to verify exactly-once processing using global app pool
@@ -273,7 +275,7 @@ if __name__ == "__main__":
                     "SELECT id, status FROM fastjob_jobs WHERE status IN ('done', 'failed', 'dead_letter')"
                 )
                 total_processed = len(completed_jobs)
-                
+
             assert (
                 total_processed == 20
             ), f"Expected 20 jobs processed, got {total_processed}"
@@ -324,7 +326,9 @@ if __name__ == "__main__":
 
                 # Failing jobs
                 for i in range(3):
-                    job_id = await fastjob.enqueue(failing_job, should_fail=True, job_id=i)
+                    job_id = await fastjob.enqueue(
+                        failing_job, should_fail=True, job_id=i
+                    )
                     job_ids.append(job_id)
 
                 # Successful jobs
@@ -363,7 +367,7 @@ if __name__ == "__main__":
                 # Use global app pool for consistency
                 global_app = fastjob._get_global_app()
                 app_pool = await global_app.get_pool()
-                
+
                 async with app_pool.acquire() as verify_conn:
                     # Verify failing jobs eventually moved to failed/dead_letter status
                     # Search for any jobs that have failed/dead_letter status (regardless of name)
@@ -485,26 +489,26 @@ if __name__ == "__main__":
 
                 # Process jobs efficiently - run_worker may process multiple jobs per call
                 start_process = time.time()
-                
+
                 max_attempts = 20
                 for attempt in range(max_attempts):
                     # Check remaining jobs using global app pool
-                    global_app = fastjob._get_global_app()  
+                    global_app = fastjob._get_global_app()
                     app_pool = await global_app.get_pool()
-                    
+
                     async with app_pool.acquire() as conn:
                         queued_count = await conn.fetchval(
                             "SELECT COUNT(*) FROM fastjob_jobs WHERE status = 'queued'"
                         )
-                    
+
                     if queued_count == 0:
                         break
-                        
+
                     # Process available jobs
                     processed = await fastjob.run_worker(run_once=True)
                     if not processed:
                         break
-                        
+
                     await asyncio.sleep(0.001)  # Very small delay
 
                 process_time = time.time() - start_process

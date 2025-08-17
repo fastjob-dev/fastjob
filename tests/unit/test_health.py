@@ -3,26 +3,27 @@ Test suite for health.py module - comprehensive coverage for production health m
 """
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from fastjob.health import (
-    HealthStatus,
     HealthCheck,
     HealthMonitor,
+    HealthStatus,
+    _health_monitor,
+    add_health_check,
     check_database_health,
     check_job_processing_health,
     check_system_resources,
+    cli_health_check,
+    cli_readiness_check,
     get_health_status,
     is_healthy,
     is_ready,
-    add_health_check,
     setup_default_health_checks,
     start_health_monitoring,
     stop_health_monitoring,
-    cli_health_check,
-    cli_readiness_check,
-    _health_monitor,
 )
 
 
@@ -331,7 +332,7 @@ class TestHealthCheckFunctions:
             1,  # Tables exist
             100,  # Job count
         ]
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -347,7 +348,7 @@ class TestHealthCheckFunctions:
         # Mock connection with fetchval method
         mock_conn = AsyncMock()
         mock_conn.fetchval.return_value = 2  # Wrong result for SELECT 1
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -363,7 +364,7 @@ class TestHealthCheckFunctions:
         # Mock connection with fetchval method
         mock_conn = AsyncMock()
         mock_conn.fetchval.side_effect = [1, 0]  # Basic check OK, no tables
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -379,7 +380,7 @@ class TestHealthCheckFunctions:
         # Mock connection with fetchval method
         mock_conn = AsyncMock()
         mock_conn.fetchval.side_effect = Exception("Connection failed")
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -400,7 +401,7 @@ class TestHealthCheckFunctions:
             5,  # failed jobs
             20,  # total recent jobs
         ]
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -421,7 +422,7 @@ class TestHealthCheckFunctions:
             15,  # failed jobs
             20,  # total recent jobs (75.0% failure rate)
         ]
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -442,7 +443,7 @@ class TestHealthCheckFunctions:
             2,  # failed jobs
             20,  # total recent jobs
         ]
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -458,7 +459,7 @@ class TestHealthCheckFunctions:
         # Mock connection with fetchval method
         mock_conn = AsyncMock()
         mock_conn.fetchval.side_effect = Exception("Database error")
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -475,7 +476,7 @@ class TestHealthCheckFunctions:
         mock_psutil.disk_usage.return_value = MagicMock(percent=60.0)
         mock_psutil.cpu_percent.return_value = 30.0
 
-        with patch.dict('sys.modules', {'psutil': mock_psutil}):
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.HEALTHY
@@ -488,7 +489,7 @@ class TestHealthCheckFunctions:
         mock_psutil = MagicMock()
         mock_psutil.virtual_memory.return_value = MagicMock(percent=95.0)
 
-        with patch.dict('sys.modules', {'psutil': mock_psutil}):
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -500,7 +501,7 @@ class TestHealthCheckFunctions:
         mock_psutil.virtual_memory.return_value = MagicMock(percent=50.0)
         mock_psutil.disk_usage.return_value = MagicMock(percent=95.0)
 
-        with patch.dict('sys.modules', {'psutil': mock_psutil}):
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -513,7 +514,7 @@ class TestHealthCheckFunctions:
         mock_psutil.disk_usage.return_value = MagicMock(percent=60.0)
         mock_psutil.cpu_percent.return_value = 98.0
 
-        with patch.dict('sys.modules', {'psutil': mock_psutil}):
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.DEGRADED
@@ -532,7 +533,7 @@ class TestHealthCheckFunctions:
         mock_psutil = MagicMock()
         mock_psutil.virtual_memory.side_effect = Exception("System error")
 
-        with patch.dict('sys.modules', {'psutil': mock_psutil}):
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
             status, message = await check_system_resources()
 
         assert status == HealthStatus.UNHEALTHY
@@ -618,7 +619,7 @@ class TestHealthAPIFunctions:
         # Mock connection with fetchval method
         mock_conn = AsyncMock()
         mock_conn.fetchval.side_effect = [1, 1]  # Basic check, tables exist
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -633,7 +634,7 @@ class TestHealthAPIFunctions:
         # Mock connection with fetchval method
         mock_conn = AsyncMock()
         mock_conn.fetchval.side_effect = [1, 0]  # Basic check OK, no tables
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool
@@ -648,7 +649,7 @@ class TestHealthAPIFunctions:
         # Mock connection with fetchval method
         mock_conn = AsyncMock()
         mock_conn.fetchval.side_effect = Exception("Connection failed")
-        
+
         # Mock pool with acquire context manager
         mock_pool = MockPool(mock_conn)
         mock_get_pool.return_value = mock_pool

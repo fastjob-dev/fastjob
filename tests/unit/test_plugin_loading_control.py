@@ -28,8 +28,8 @@ class TestPluginLoadingControl:
         from fastjob.testing import (
             disable_plugins,
             enable_plugins,
-            no_plugins,
             is_plugin_loading_disabled,
+            no_plugins,
             reset_plugin_state,
         )
 
@@ -57,7 +57,7 @@ class TestPluginLoadingControl:
 
     def test_context_manager_nesting(self):
         """Test that context manager works with nesting"""
-        from fastjob.testing import no_plugins, is_plugin_loading_disabled
+        from fastjob.testing import is_plugin_loading_disabled, no_plugins
 
         assert is_plugin_loading_disabled() is False
 
@@ -101,6 +101,7 @@ class TestPluginLoadingControl:
 
         # These should work without triggering plugin loading
         from fastjob.settings import get_settings
+
         settings = get_settings()
         assert settings is not None
 
