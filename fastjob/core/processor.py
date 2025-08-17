@@ -597,17 +597,50 @@ async def run_worker(
                     )
                     await pool.release(listen_conn)
 
+            # Setup signal handlers for graceful shutdown
+            from ..utils.signals import setup_global_signal_handlers, cleanup_global_signal_handlers
+            
+            shutdown_event = asyncio.Event()
+            signal_handler = setup_global_signal_handlers(shutdown_event)
+            
             # Start multiple worker tasks for concurrency
             tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
 
             try:
-                await asyncio.gather(*tasks)
+                # Create a task that waits for shutdown signal
+                shutdown_task = asyncio.create_task(shutdown_event.wait())
+                worker_task = asyncio.create_task(asyncio.gather(*tasks, return_exceptions=True))
+                
+                # Wait for either workers to complete or shutdown signal
+                done, pending = await asyncio.wait(
+                    [worker_task, shutdown_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                # If shutdown was requested, cancel workers
+                if shutdown_task in done:
+                    logger.info("Graceful shutdown initiated by signal...")
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    
+                    # Wait for workers to finish gracefully
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Cancel pending tasks
+                for task in pending:
+                    task.cancel()
+                    
             except KeyboardInterrupt:
+                # Fallback handler for direct KeyboardInterrupt (shouldn't happen with signals)
                 logger.info("Shutting down workers...")
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
             finally:
+                # Cleanup signal handlers
+                cleanup_global_signal_handlers()
+                
                 # Stop heartbeat system
                 await heartbeat.stop_heartbeat()
     finally:

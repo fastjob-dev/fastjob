@@ -53,6 +53,19 @@ from .plugins import (
     has_plugin_feature,
 )
 
+# Enhanced configuration system
+from .config import (
+    configure as enhanced_configure,
+    get_config as get_enhanced_config,
+    reset_config,
+    is_configured as is_enhanced_configured,
+    get_setting,
+    get_database_url,
+    FastJobError,
+    FastJobConfigError,
+    FastJobAlreadyConfiguredError,
+)
+
 __version__ = "0.1.0"
 
 # Plugin loading state
@@ -74,6 +87,17 @@ __all__ = [
     "schedule",
     "run_worker",
     "configure",
+    # Enhanced configuration
+    "enhanced_configure",
+    "get_enhanced_config", 
+    "reset_config",
+    "is_enhanced_configured",
+    "get_setting",
+    "get_database_url",
+    # Configuration exceptions
+    "FastJobError",
+    "FastJobConfigError",
+    "FastJobAlreadyConfiguredError",
     # Job management API
     "get_job_status",
     "cancel_job", 
@@ -192,20 +216,23 @@ def _get_global_app() -> FastJob:
 
 def configure(**kwargs):
     """
-    Configure the global FastJob application.
+    Configure FastJob with enhanced validation and better developer experience.
     
-    This must be called before using any global functions.
-    Similar to other job queues' app.config_from_object().
+    This function now provides enhanced configuration with immediate validation,
+    clear error messages, and better integration with the settings system.
     
     Args:
-        **kwargs: Configuration options to pass to FastJob
+        **kwargs: Configuration options
         
     Examples:
         import fastjob
         
+        # Enhanced configuration with validation
         fastjob.configure(
             database_url="postgresql://localhost/myapp",
-            default_concurrency=8
+            worker_concurrency=8,
+            pool_size=30,
+            dev_mode=True
         )
         
         @fastjob.job()
@@ -213,6 +240,18 @@ def configure(**kwargs):
             pass
     """
     global _global_app, _global_job_registry
+    
+    # Try enhanced configuration first for better error messages
+    if 'database_url' in kwargs:
+        try:
+            enhanced_configure(**kwargs)
+        except FastJobAlreadyConfiguredError:
+            # For backward compatibility in tests, reset and try again
+            reset_config()
+            enhanced_configure(**kwargs)
+        except FastJobConfigError as e:
+            # Re-raise configuration errors with better context
+            raise ValueError(f"FastJob configuration error: {e}")
     
     # Close old global app if it exists and is initialized
     if _global_app is not None and _global_app.is_initialized:
@@ -225,8 +264,26 @@ def configure(**kwargs):
         except RuntimeError:
             pass  # No event loop, skip cleanup
     
+    # Map enhanced config to FastJob constructor parameters
+    fastjob_kwargs = {}
+    enhanced_to_fastjob = {
+        'worker_concurrency': 'default_concurrency',
+        'max_retries': 'default_max_retries', 
+        'default_queue': 'default_queues',
+        'pool_size': 'db_pool_max_size',
+    }
+    
+    for key, value in kwargs.items():
+        # Map enhanced config keys to FastJob constructor keys
+        fastjob_key = enhanced_to_fastjob.get(key, key)
+        if key == 'default_queue':
+            # Convert single queue to list for FastJob constructor
+            fastjob_kwargs[fastjob_key] = [value] if isinstance(value, str) else value
+        else:
+            fastjob_kwargs[fastjob_key] = value
+    
     # Create new global app with configuration
-    _global_app = FastJob(**kwargs)
+    _global_app = FastJob(**fastjob_kwargs)
     
     # Re-register all global jobs with the new instance
     for job_func, job_kwargs in _global_job_registry:

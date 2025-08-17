@@ -278,9 +278,16 @@ async def test_cli_signal_handling():
         # Process should exit cleanly
         assert process.returncode in [
             0,
-            -15,
-            130,
-        ]  # 0=clean exit, -15=SIGTERM, 130=SIGINT
+            -15,     # SIGTERM exit code on Unix
+            143,     # SIGTERM exit code (128 + 15)
+            130,     # SIGINT exit code (for fallback)
+        ]
+        
+        # Check that graceful shutdown messaging appears in output
+        combined_output = stdout + stderr
+        shutdown_keywords = ["shutdown", "stopped", "graceful", "closing", "cleanup"]
+        assert any(keyword in combined_output.lower() for keyword in shutdown_keywords), \
+            f"Expected graceful shutdown message in output: {combined_output}"
 
     except subprocess.TimeoutExpired:
         # Force kill if graceful shutdown failed

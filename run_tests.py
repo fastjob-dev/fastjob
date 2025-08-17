@@ -109,6 +109,10 @@ def main():
             ],
         ),
         (
+            "Infrastructure - Signal Handling & Graceful Shutdown",
+            ["tests/integration/infrastructure/test_signal_handling.py"],
+        ),
+        (
             "Infrastructure - Database URL Integration",
             ["tests/integration/test_database_url_integration.py"],
         ),
@@ -132,6 +136,7 @@ def main():
                 "tests/unit/test_health.py",
                 "tests/unit/test_errors.py",
                 "tests/unit/test_hashing.py",
+                "tests/unit/test_signal_handling.py",
             ],
         ),
         (

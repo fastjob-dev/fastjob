@@ -1,10 +1,12 @@
 # FastJob
 
-**Because your background jobs shouldn't be a background worry.**
+**The Python Job Queue Built for Developer Happiness**
+
+Write once, run anywhere. Your FastJob code works identically in development and production – just with different worker deployment. No Redis complexity, no infrastructure headaches, just PostgreSQL and exceptional developer experience.
 
 If you've worked with background jobs in Python, you know the drill: install Redis, configure Celery, set up separate worker processes, debug sync/async compatibility issues, and hope your jobs don't disappear when something goes wrong.
 
-I built FastJob with a different philosophy: your PostgreSQL database is already handling your app's most critical data reliably – why not use it for jobs too? FastJob prioritizes developer experience and simplicity over enterprise feature checklists.
+I built FastJob with a different philosophy: your PostgreSQL database is already handling your app's most critical data reliably – why not use it for jobs too? FastJob prioritizes developer productivity and simplicity over enterprise feature checklists.
 
 It's the job queue for developers who believe **simple is beautiful**.
 
@@ -53,138 +55,144 @@ await fastjob.enqueue(process_payment,
 
 That's it. No worker classes. No broker configuration. No YAML files. Just decorated functions and clean enqueue calls.
 
-## 30-Second Setup (Actually)
+## Quick Start
+
+**The DX Magic:** Same code adapts automatically to development and production environments.
+
+**Prerequisites:** PostgreSQL (most developers already have this)
 
 ```bash
 pip install fastjob
-createdb your_app_db
-export FASTJOB_DATABASE_URL="postgresql://localhost/your_app_db"
-fastjob setup
 ```
 
-Your jobs are ready to run. Really.
-
-## The Development Experience You've Been Wanting
-
-### Your First Working Example
-
-Create `jobs.py`:
+Create `demo.py`:
 ```python
 import asyncio
 import fastjob
+
+# Same configuration everywhere - environment controls behavior
+fastjob.configure(
+    database_url="postgresql://localhost/your_existing_db"
+)
 
 @fastjob.job()
-async def send_welcome_email(user_email: str, name: str):
-    print(f"📧 Sending welcome to {name} at {user_email}")
-    await asyncio.sleep(1)  # Simulate email API call
-    print(f"✅ Email sent!")
-
-@fastjob.job(retries=3, queue="payments")
-async def process_payment(order_id: int, amount: float):
-    print(f"💳 Processing ${amount} for order {order_id}")
-    await asyncio.sleep(2)  # Simulate payment API
-    print(f"✅ Payment processed!")
-```
-
-Create `main.py`:
-```python
-import asyncio
-from jobs import send_welcome_email, process_payment
-import fastjob
+async def send_email(email: str, name: str):
+    print(f"📧 Sending to {name} at {email}")
+    await asyncio.sleep(1)  # Simulate work
+    print(f"✅ Sent!")
 
 async def main():
-    print("🚀 Enqueueing jobs...")
-
-    await fastjob.enqueue(send_welcome_email,
-                         user_email="alice@example.com",
-                         name="Alice")
-
-    await fastjob.enqueue(process_payment,
-                         order_id=12345,
-                         amount=99.99)
-
-    print("✅ Jobs queued! Check your worker terminal.")
+    # ✨ The DX Magic: Same code adapts to any environment
+    if fastjob.is_dev_mode():
+        fastjob.start_embedded_worker()
+        print("🔄 Dev mode: Jobs process instantly in your app")
+    
+    await fastjob.enqueue(send_email, email="alice@example.com", name="Alice")
+    await asyncio.sleep(3)  # Watch it work
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-**To run this example:**
+**Development (embedded worker):**
 ```bash
-# Terminal 1: Start worker
-fastjob start
-
-# Terminal 2: Enqueue jobs
-python main.py
+export FASTJOB_DEV_MODE=true
+python demo.py
 ```
 
-**Watch your jobs process instantly.** No Redis setup. No configuration hell. Just working code.
+**Production (separate workers):**
+```bash
+# Your app runs normally (no FASTJOB_DEV_MODE)
+python demo.py
 
-*Note: This example shows the production pattern with separate worker processes. In development, you can run jobs directly in your web server - see below.*
+# Separate terminal: dedicated workers
+fastjob worker --concurrency=4
+```
 
-## Development vs Production: Same Code, Different Worker Management
+**🚀 Write once, run anywhere** - environment variables control worker behavior, your code stays the same.
 
-Here's what makes FastJob special - your job code stays identical everywhere. The only difference is how you run the workers:
+## What You Get
 
-### Development: Everything Just Works
-
+### ✅ **Zero Infrastructure Headaches**
 ```python
-from fastapi import FastAPI
-import fastjob
+# No Redis to install, no message broker to configure
+fastjob.configure(database_url="postgresql://localhost/myapp")
+```
 
-app = FastAPI()
+### ✅ **Developer Experience That Actually Works**
+```python
+# Safe for production - only runs embedded worker in development
+if fastjob.is_dev_mode():
+    fastjob.start_embedded_worker()
+    
+await fastjob.enqueue(my_job, data="test")
+# Dev: Job runs immediately in the same process
+# Prod: Job queues for external workers - same code, zero config changes
+```
 
-@fastjob.job(retries=3)
-async def resize_uploaded_image(user_id: int, image_path: str):
-    # Your image processing logic
+### ✅ **Type Safety That Prevents Bugs**
+```python
+@fastjob.job()
+async def process_order(order_id: int, amount: float):
+    # FastJob validates types automatically
     pass
 
-@app.post("/upload-photo/")
-async def upload_photo(user_id: int, image_data: bytes):
-    image_path = save_image(image_data)
-
-    # Enqueue background job - it just works
-    await fastjob.enqueue(resize_uploaded_image,
-                         user_id=user_id,
-                         image_path=image_path)
-
-    return {"status": "uploaded", "processing": "queued"}
-
-@app.on_event("startup")
-async def startup():
-    if fastjob.run_in_dev_mode():
-        # Jobs run in your web server - no separate processes
-        fastjob.start_embedded_worker()
+# This raises a validation error before reaching your worker
+await fastjob.enqueue(process_order, order_id="invalid", amount="not_a_number")
 ```
 
-**Development:** `FASTJOB_DEV_MODE=true python -m uvicorn main:app`
+### ✅ **Microservices Without Shared Infrastructure**
+```python
+# Each service gets its own job database
+user_service = FastJob(database_url="postgresql://localhost/users")
+billing_service = FastJob(database_url="postgresql://localhost/billing")
 
-Jobs process in your web server. No Docker. No separate terminals. No complexity.
+# No more cross-service job contamination
+```
 
-### Production: Independent Scaling
+## Production Setup
+
+When you're ready for production, FastJob's simplicity really shines:
 
 ```bash
-# Your app runs normally (same code!)
-python -m uvicorn main:app
+# 1. Configure your database (you already have one)
+export FASTJOB_DATABASE_URL="postgresql://prod.db/myapp"
 
-# Separate terminal: dedicated job workers
-fastjob start --concurrency 4 --queues default,urgent
+# 2. Run migrations (once)
+fastjob migrate
+
+# 3. Start workers (scale as needed)
+fastjob worker --concurrency=8
 ```
 
-**Same functions. Same enqueue calls. Just different worker deployment.**
+**That's your entire production setup.** No Redis cluster, no RabbitMQ management, no additional monitoring.
 
-## Two APIs: Start Simple, Scale to Microservices
+### Framework Integration
 
-FastJob grows with your architecture. Start simple, scale when you need isolation:
+FastJob works with whatever you're building:
 
-### 🎯 Global API (Most Teams)
+```python
+# FastAPI
+@app.post("/users")
+async def create_user(user_data: dict):
+    await fastjob.enqueue(send_welcome_email, user_data)
 
-Perfect for single applications:
+# Django
+def user_signup(request):
+    asyncio.run(fastjob.enqueue(send_welcome_email, request.POST))
 
+# Flask
+@app.route("/users", methods=["POST"])
+def create_user():
+    asyncio.run(fastjob.enqueue(send_welcome_email, request.json))
+```
+
+## Two APIs: Choose Your Style
+
+### Global API (Most Apps)
 ```python
 import fastjob
 
-# One database, simple configuration
 @fastjob.job()
 async def send_email(to: str, subject: str):
     pass
@@ -192,48 +200,21 @@ async def send_email(to: str, subject: str):
 await fastjob.enqueue(send_email, to="user@example.com", subject="Welcome!")
 ```
 
-### 🏗️ Instance API (Microservices/Multi-Tenant)
-
-When you need **complete isolation**:
-
+### Instance API (Microservices)
 ```python
 from fastjob import FastJob
 
-# Each service gets its own database and job processing
-user_service = FastJob(database_url="postgresql://localhost/user_service")
-billing_service = FastJob(database_url="postgresql://localhost/billing_service")
-analytics_service = FastJob(database_url="postgresql://localhost/analytics_service")
+user_service = FastJob(database_url="postgresql://localhost/users")
+billing_service = FastJob(database_url="postgresql://localhost/billing")
 
 @user_service.job()
 async def send_welcome_email(user_id: int):
     pass
 
-@billing_service.job()
-async def process_payment(invoice_id: int):
-    pass
-
-@analytics_service.job()
-async def track_event(event_data: dict):
-    pass
-
-# Each service processes its own jobs independently
 await user_service.enqueue(send_welcome_email, user_id=123)
-await billing_service.enqueue(process_payment, invoice_id=456)
-await analytics_service.enqueue(track_event, event_data={...})
 ```
 
-**Why this is powerful:**
-- 🔒 **Complete isolation** - user service can't accidentally process billing jobs
-- 📊 **Independent monitoring** - dashboard per service shows exactly what you need
-- 🚀 **Independent scaling** - scale payment processing differently from analytics
-- 👥 **Team ownership** - different teams own different services completely
-- 🛡️ **Data security** - tenant data never crosses service boundaries
-
-**When to use which:**
-- **Global API**: Single app, shared database (90% of teams start here)
-- **Instance API**: Microservices, multi-tenant SaaS, or when you need job isolation
-
-**Migration path:** Start Global, migrate services to Instance as your architecture evolves.
+**Perfect for:** Microservices, multi-tenant SaaS, team separation
 
 ## Features That Actually Matter
 
@@ -477,8 +458,10 @@ async def upload_file(file_id: int):
 
 @app.on_event("startup")
 async def startup():
-    if fastjob.run_in_dev_mode():
+    # ✨ The DX Magic: Same code adapts to any environment
+    if fastjob.is_dev_mode():
         fastjob.start_embedded_worker()
+        print("🔄 Dev mode: Jobs process instantly in your FastAPI app")
 ```
 
 ### Django (Async Views)
@@ -550,6 +533,13 @@ createdb fastjob_test
 python run_tests.py  # Recommended - organized test runner
 # or: python -m pytest tests/ -v
 ```
+
+## Documentation & Resources
+
+📖 **[Complete Documentation](https://fastjob.dev)** - Everything from getting started to production deployment  
+🔄 **[Framework Integration](https://fastjob.dev/docs/fastapi-integration)** - FastAPI, Django, Flask, and more  
+⚡ **[Your First Job](https://fastjob.dev/docs/first-job)** - Working example in under 5 minutes  
+🔍 **[Compare with Others](https://fastjob.dev/compare)** - Detailed comparisons with Celery, RQ, Dramatiq  
 
 ## Why I Built This
 
