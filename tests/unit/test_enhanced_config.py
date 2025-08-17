@@ -161,10 +161,12 @@ class TestEnhancedConfiguration:
         original_url = os.environ.get("FASTJOB_DATABASE_URL")
         if "FASTJOB_DATABASE_URL" in os.environ:
             del os.environ["FASTJOB_DATABASE_URL"]
-        
+
         try:
             config = get_config()
-            with pytest.raises(FastJobConfigError, match="FASTJOB_DATABASE_URL.*required"):
+            with pytest.raises(
+                FastJobConfigError, match="FASTJOB_DATABASE_URL.*required"
+            ):
                 config.from_env()
         finally:
             # Restore original environment variable
