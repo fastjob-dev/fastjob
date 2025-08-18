@@ -230,10 +230,15 @@ async def test_cli_worker():
 
     assert main is not None
 
-    # Test that we can import the run_worker function
-    from fastjob.core.processor import run_worker
+    # Test that we can access run_worker through global API (which uses FastJob instance)
+    import fastjob
 
-    assert run_worker is not None
+    assert fastjob.run_worker is not None
+    
+    # Test that FastJob instances have run_worker method
+    from fastjob import FastJob
+    app = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
+    assert app.run_worker is not None
 
 
 @pytest.mark.asyncio

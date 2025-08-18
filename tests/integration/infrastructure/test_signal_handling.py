@@ -119,9 +119,8 @@ async def main():
     async def test_job():
         return "test"
     
-    # Start worker
-    from fastjob.core.processor import run_worker
-    await run_worker(concurrency=1)
+    # Start worker using global API
+    await fastjob.run_worker(concurrency=1)
 
 if __name__ == "__main__":
     asyncio.run(main())

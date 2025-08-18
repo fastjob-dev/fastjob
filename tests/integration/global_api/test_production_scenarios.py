@@ -114,10 +114,14 @@ import asyncio
 import sys
 sys.path.insert(0, "{os.path.dirname(os.path.dirname(__file__))}")
 
-from fastjob.core.processor import run_worker
+import fastjob
+
+async def main():
+    fastjob.configure(database_url="{settings.database_url}")
+    await fastjob.run_worker(concurrency=2)
 
 if __name__ == "__main__":
-    asyncio.run(run_worker(concurrency=2, database_url="{settings.database_url}"))
+    asyncio.run(main())
 """
 
             with tempfile.NamedTemporaryFile(

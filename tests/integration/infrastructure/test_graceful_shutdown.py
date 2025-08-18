@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from fastjob.core.heartbeat import cleanup_stale_workers
-from fastjob.core.processor import run_worker
+# Use global API or FastJob instance for worker functionality
 from fastjob.db.connection import create_pool
 
 
@@ -59,10 +59,12 @@ async def test_worker_cancellation_no_pool_errors(caplog):
     
     # Set log level to capture all messages
     with caplog.at_level(logging.DEBUG):
-        # Start a worker task
+        # Start a worker task using global API
+        import fastjob
         from fastjob.settings import get_settings
+        fastjob.configure(database_url=get_settings().database_url)
         worker_task = asyncio.create_task(
-            run_worker(concurrency=1, database_url=get_settings().database_url)
+            fastjob.run_worker(concurrency=1)
         )
         
         # Let it start up
@@ -99,11 +101,14 @@ async def test_multiple_rapid_worker_cancellations(caplog):
     caplog.clear()
     
     with caplog.at_level(logging.ERROR):
+        import fastjob
+        from fastjob.settings import get_settings
+        fastjob.configure(database_url=get_settings().database_url)
+        
         for i in range(3):
             # Start worker
-            from fastjob.settings import get_settings
             worker_task = asyncio.create_task(
-                run_worker(concurrency=1, database_url=get_settings().database_url) 
+                fastjob.run_worker(concurrency=1) 
             )
             
             # Brief startup time
@@ -180,10 +185,12 @@ async def test_graceful_shutdown_integration():
     # Start the signal handler task
     signal_task = asyncio.create_task(mock_signal_handler())
     
-    # Start worker with a brief timeout  
+    # Start worker with a brief timeout using global API
+    import fastjob
     from fastjob.settings import get_settings
+    fastjob.configure(database_url=get_settings().database_url)
     worker_task = asyncio.create_task(
-        run_worker(concurrency=1, database_url=get_settings().database_url)
+        fastjob.run_worker(concurrency=1)
     )
     
     # Wait for either signal or timeout

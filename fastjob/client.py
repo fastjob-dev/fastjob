@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import asyncpg
+import asyncpg.exceptions
 
 from .cli.registry import CLIRegistry
 from .core.registry import JobRegistry
@@ -295,138 +296,221 @@ class FastJob:
         """
         await self._ensure_initialized()
 
-        from .core.heartbeat import WorkerHeartbeat
-        from .core.processor import process_jobs_with_registry
-
-        # Create worker heartbeat for this instance (optional)
-        heartbeat = None
-        if not run_once:  # Only use heartbeat for long-running workers
-            heartbeat = WorkerHeartbeat(
-                pool=self._pool, queues=queues, concurrency=concurrency
-            )
-            await heartbeat.register_worker()
-            await heartbeat.start_heartbeat()
-
+        queue_info = "all queues" if queues is None else f"queues: {queues}"
         logger.info(
-            f"Starting FastJob worker (concurrency: {concurrency}, queues: {queues})"
+            f"Starting FastJob worker - concurrency: {concurrency}, processing: {queue_info}"
         )
 
         try:
-            # Create worker tasks
-            tasks = []
-            shutdown_event = asyncio.Event()
-
-            jobs_processed = False
-
-            async def worker_loop(worker_id: int):
-                """Main worker loop for processing jobs."""
-                nonlocal jobs_processed
-                logger.debug(f"Worker {worker_id} started")
-
-                try:
-                    while not shutdown_event.is_set():
-                        async with self._pool.acquire() as conn:
-                            processed = await process_jobs_with_registry(
-                                conn=conn,
-                                job_registry=self._job_registry,
-                                queue=queues,
-                                heartbeat=heartbeat,
-                            )
-
-                        if processed:
-                            jobs_processed = True
-
-                        if run_once and not processed:
-                            # No jobs available and run_once is True
-                            break
-
-                        if not processed:
-                            # No jobs available, wait a bit before checking again
-                            try:
-                                await asyncio.wait_for(
-                                    shutdown_event.wait(),
-                                    timeout=self._settings.embedded_poll_interval,
-                                )
-                            except asyncio.TimeoutError:
-                                pass  # Continue processing
-
-                except asyncio.CancelledError:
-                    logger.debug(f"Worker {worker_id} cancelled")
-                    raise
-                except Exception as e:
-                    logger.error(f"Worker {worker_id} error: {e}")
-                    raise
-                finally:
-                    logger.debug(f"Worker {worker_id} finished")
-
-            # Start worker tasks
-            for i in range(concurrency):
-                task = asyncio.create_task(worker_loop(i))
-                tasks.append(task)
-
             if run_once:
-                # Wait for all workers to complete
-                await asyncio.gather(*tasks, return_exceptions=True)
+                return await self._run_worker_once(queues)
             else:
-                # Run until cancelled (infinite loop)
-                from .utils.signals import GracefulSignalHandler
-
-                # Setup signal handlers for instance-based workers
-                instance_signal_handler = GracefulSignalHandler()
-                instance_signal_handler.setup_signal_handlers(shutdown_event)
-
-                try:
-                    # Create a task that waits for shutdown signal
-                    signal_task = asyncio.create_task(shutdown_event.wait())
-
-                    # Wait for either workers to complete or shutdown signal
-                    worker_gather_task = asyncio.gather(*tasks, return_exceptions=True)
-                    done, pending = await asyncio.wait(
-                        [worker_gather_task, signal_task],
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-
-                    # If shutdown was requested, cancel workers
-                    if signal_task in done:
-                        logger.info("Worker graceful shutdown initiated by signal...")
-
-                    # Cancel all tasks regardless of which completed first
-                    for task in tasks:
-                        if not task.done():
-                            task.cancel()
-
-                    # Cancel pending monitoring tasks
-                    for task in pending:
-                        task.cancel()
-
-                    # Wait for graceful shutdown
-                    await asyncio.gather(*tasks, return_exceptions=True)
-
-                except KeyboardInterrupt:
-                    # Fallback handler for direct KeyboardInterrupt (shouldn't happen with signals)
-                    logger.info("Worker interrupted by user")
-                    shutdown_event.set()
-
-                    # Cancel all tasks
-                    for task in tasks:
-                        if not task.done():
-                            task.cancel()
-
-                    # Wait for graceful shutdown
-                    await asyncio.gather(*tasks, return_exceptions=True)
-
-                finally:
-                    # Cleanup signal handlers
-                    instance_signal_handler.restore_signal_handlers()
-
+                return await self._run_worker_continuous(concurrency, queues)
         finally:
-            # Clean up heartbeat if it was started
-            if heartbeat:
-                await heartbeat.stop_heartbeat()
             logger.info("FastJob worker stopped")
 
-        # Return whether any jobs were processed (useful for run_once mode)
+    async def _run_worker_once(self, queues: Optional[List[str]] = None) -> bool:
+        """
+        Process all available jobs once and exit.
+
+        Continues processing until no more jobs are available,
+        allowing for retries and full queue draining.
+
+        Returns:
+            True if any jobs were processed, False otherwise
+        """
+        from .core.processor import process_jobs_with_registry
+
+        jobs_processed = False
+
+        # Keep processing until no more jobs are available
+        while True:
+            async with self._pool.acquire() as conn:
+                processed = await process_jobs_with_registry(
+                    conn=conn,
+                    job_registry=self._job_registry,
+                    queue=queues,
+                    heartbeat=None,  # No heartbeat for run_once
+                )
+
+            if processed:
+                jobs_processed = True
+            else:
+                # No more jobs available, exit
+                break
+
         return jobs_processed
+
+    async def _run_worker_continuous(
+        self, concurrency: int, queues: Optional[List[str]] = None
+    ) -> bool:
+        """
+        Run continuous worker with heartbeat and signal handling.
+
+        Returns:
+            True if any jobs were processed during the session
+        """
+        from .core.heartbeat import WorkerHeartbeat
+        from .core.processor import process_jobs_with_registry
+        from .utils.signals import GracefulSignalHandler
+        
+        # Create worker heartbeat system
+        heartbeat = WorkerHeartbeat(self._pool, queues, concurrency)
+        await heartbeat.register_worker()
+        await heartbeat.start_heartbeat()
+
+        # Continuous processing with LISTEN/NOTIFY
+        async def worker():
+            # Each worker needs its own connection for LISTEN/NOTIFY
+            listen_conn = await self._pool.acquire()
+            notification_event = asyncio.Event()
+
+            def notification_callback(connection, pid, channel, payload):
+                logger.debug(f"Received notification on {channel}: {payload}")
+                notification_event.set()
+
+            try:
+                # Set up LISTEN for job notifications
+                await listen_conn.add_listener("fastjob_new_job", notification_callback)
+
+                # Track last cleanup time for periodic cleanup
+                last_cleanup = 0
+                cleanup_interval = self._settings.cleanup_interval
+
+                while True:
+                    try:
+                        # Check if shutdown has been requested
+                        if shutdown_event.is_set():
+                            logger.info("Shutdown requested, stopping worker")
+                            break
+                            
+                        # Process jobs from all queues first
+                        any_processed = False
+
+                        # Use separate connection for job processing to avoid blocking LISTEN
+                        try:
+                            async with self._pool.acquire() as job_conn:
+                                # Process jobs efficiently
+                                processed = await process_jobs_with_registry(
+                                    conn=job_conn,
+                                    job_registry=self._job_registry,
+                                    queue=queues,
+                                    heartbeat=heartbeat,
+                                )
+                                if processed:
+                                    any_processed = True
+
+                                # Run periodic cleanup of expired jobs
+                                import time
+                                current_time = time.time()
+                                if current_time - last_cleanup > cleanup_interval:
+                                    try:
+                                        # Clean up expired completed jobs if RESULT_TTL is set
+                                        if self._settings.result_ttl > 0:
+                                            cleaned = await job_conn.execute(
+                                                "DELETE FROM fastjob_jobs WHERE status = 'done' AND expires_at < NOW()"
+                                            )
+                                            cleaned_count = (
+                                                int(cleaned.split()[-1]) if cleaned else 0
+                                            )
+                                            if cleaned_count > 0:
+                                                logger.debug(f"Cleaned up {cleaned_count} expired jobs")
+
+                                        # Clean up stale workers
+                                        from .core.heartbeat import cleanup_stale_workers
+                                        await cleanup_stale_workers(
+                                            self._pool,
+                                            stale_threshold_seconds=self._settings.stale_worker_threshold,
+                                        )
+
+                                        last_cleanup = current_time
+                                    except Exception as cleanup_error:
+                                        logger.warning(f"Cleanup failed: {cleanup_error}")
+                                        last_cleanup = current_time  # Prevent continuous retries
+
+                        except Exception as e:
+                            if "pool is closing" in str(e):
+                                logger.debug("Pool is closing, stopping worker")
+                                break
+                            else:
+                                raise
+
+                        if not any_processed:
+                            # No jobs available, wait for NOTIFY with timeout
+                            try:
+                                # Wait for notification with configurable timeout
+                                await asyncio.wait_for(
+                                    notification_event.wait(),
+                                    timeout=self._settings.notification_timeout,
+                                )
+                                notification_event.clear()  # Reset for next notification
+                                logger.info("Received job notification")
+                            except asyncio.TimeoutError:
+                                # Timeout is normal - allows periodic checks for scheduled jobs
+                                logger.debug("No notifications, checking for scheduled jobs")
+
+                    except Exception as e:
+                        logger.exception(f"Worker error: {e}")
+                        await asyncio.sleep(self._settings.error_retry_delay)
+
+            finally:
+                try:
+                    await listen_conn.remove_listener("fastjob_new_job", notification_callback)
+                except asyncpg.exceptions.InterfaceError as e:
+                    logger.debug(f"Failed to remove listener (pool closing): {e}")
+                
+                try:
+                    await self._pool.release(listen_conn)
+                except asyncpg.exceptions.InterfaceError as e:
+                    logger.debug(f"Failed to release connection (pool closing): {e}")
+
+        # Setup signal handlers for graceful shutdown
+        shutdown_event = asyncio.Event()
+        signal_handler = GracefulSignalHandler()
+        signal_handler.setup_signal_handlers(shutdown_event)
+
+        # Start multiple worker tasks for concurrency
+        tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+
+        try:
+            # Create a task that waits for shutdown signal
+            shutdown_task = asyncio.create_task(shutdown_event.wait())
+            worker_task = asyncio.gather(*tasks, return_exceptions=True)
+
+            # Wait for either workers to complete or shutdown signal
+            done, pending = await asyncio.wait(
+                [worker_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # If shutdown was requested, cancel workers
+            if shutdown_task in done:
+                logger.info("Graceful shutdown initiated by signal...")
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+
+                # Wait for workers to finish gracefully
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Cancel pending tasks
+            for task in pending:
+                task.cancel()
+
+        except KeyboardInterrupt:
+            # Fallback handler for direct KeyboardInterrupt (shouldn't happen with signals)
+            logger.info("Shutting down workers...")
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            # Cleanup signal handlers
+            signal_handler.restore_signal_handlers()
+
+            # Stop heartbeat system
+            await heartbeat.stop_heartbeat()
+        
+        return True  # Jobs may have been processed during the session
+
 
     # Job Management API
 
@@ -494,7 +578,7 @@ class FastJob:
         async with self._pool.acquire() as conn:
             result = await conn.execute(
                 """
-                UPDATE fastjob_jobs 
+                UPDATE fastjob_jobs
                 SET status = 'cancelled', updated_at = NOW()
                 WHERE id = $1 AND status = 'queued'
             """,
@@ -521,7 +605,7 @@ class FastJob:
         async with self._pool.acquire() as conn:
             result = await conn.execute(
                 """
-                UPDATE fastjob_jobs 
+                UPDATE fastjob_jobs
                 SET status = 'queued', attempts = 0, last_error = NULL, updated_at = NOW()
                 WHERE id = $1 AND status IN ('dead_letter', 'failed')
             """,
@@ -643,7 +727,7 @@ class FastJob:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT 
+                SELECT
                     queue,
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE status = 'queued') as queued,
@@ -742,6 +826,3 @@ class FastJob:
                 self._pool = None
         except Exception as e:
             logger.debug(f"Error during cleanup: {e}")
-
-
-# FastJob is now instance-based only for clean, modern architecture

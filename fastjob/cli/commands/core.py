@@ -213,10 +213,10 @@ async def handle_start_command(args):
                 concurrency=args.concurrency, queues=queues, run_once=args.run_once
             )
         else:
-            # Use global API
-            from fastjob.core.processor import run_worker
+            # Use global API (which delegates to a FastJob instance internally)
+            import fastjob
 
-            await run_worker(
+            await fastjob.run_worker(
                 concurrency=args.concurrency, queues=queues, run_once=args.run_once
             )
     except KeyboardInterrupt:

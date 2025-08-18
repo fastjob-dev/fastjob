@@ -37,7 +37,60 @@ export FASTJOB_DATABASE_URL="postgresql://localhost/your_existing_db"
 fastjob setup
 ```
 
-Create `demo.py`:
+### **Simple Approach: Everything in One File**
+
+Create `app.py`:
+
+```python
+import fastjob
+from fastapi import FastAPI
+
+# Configure FastJob
+fastjob.configure(database_url="postgresql://localhost/myapp")
+
+app = FastAPI()
+
+# Register your job
+@fastjob.job()
+async def process_upload(file_path: str):
+    print(f"Processing {file_path}")
+    return f"Processed {file_path}"
+
+# Enqueue jobs via API
+@app.post("/upload")
+async def upload_file(file_path: str):
+    job_id = await fastjob.enqueue(process_upload, file_path=file_path)
+    return {"job_id": job_id}
+
+# The magic: same code adapts to dev/prod via environment
+@app.on_event("startup")
+async def startup():
+    if fastjob.is_dev_mode():
+        fastjob.start_embedded_worker()
+        print("🔄 Dev mode: Jobs process instantly in your app")
+```
+
+**Development:**
+```bash
+export FASTJOB_DEV_MODE=true
+uvicorn app:app --reload
+```
+
+**Production:**
+```bash
+# Terminal 1: Your app (no dev mode)
+uvicorn app:app
+
+# Terminal 2: Workers
+export FASTJOB_JOBS_MODULE=app
+fastjob start
+```
+
+**🚀 Same code, different behavior based on environment variables.**
+
+### **Alternative: Standalone Script**
+
+If you prefer a simple script approach, create `demo.py`:
 
 ```python
 import asyncio
@@ -65,14 +118,12 @@ if __name__ == "__main__":
 ```
 
 **Development (embedded worker):**
-
 ```bash
 export FASTJOB_DEV_MODE=true
 python demo.py
 ```
 
 **Production (separate workers):**
-
 ```bash
 # Your app runs normally (no FASTJOB_DEV_MODE)
 python demo.py
@@ -82,6 +133,19 @@ fastjob start --concurrency=4
 ```
 
 **🚀 Write once, run anywhere** - environment variables control worker behavior, your code stays the same.
+
+## Troubleshooting
+
+### **"Job not registered - moved to dead letter queue"**
+
+This happens when the worker process doesn't know about your `@fastjob.job()` decorators. **The worker needs to import your module to see the job registrations.**
+
+**✅ Quick fixes:**
+- **Development:** `export FASTJOB_DEV_MODE=true` (worker runs in your app)  
+- **Production:** `export FASTJOB_JOBS_MODULE=your_app_module` then `fastjob start`
+- **Manual:** Create worker script that imports your app first
+
+**The key insight:** FastJob needs to import your module to see the `@fastjob.job()` decorators.
 
 ## How It Works: Core Concepts
 
