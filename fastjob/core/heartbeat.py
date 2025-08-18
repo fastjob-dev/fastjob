@@ -229,6 +229,11 @@ async def cleanup_stale_workers(
         stale_threshold_seconds = get_settings().stale_worker_threshold
 
     try:
+        # Check if pool is closing before attempting to acquire
+        if pool._closing:
+            logger.debug("Pool is closing, skipping stale worker cleanup")
+            return 0
+            
         async with pool.acquire() as conn:
             # Mark stale workers as stopped
             result = await conn.execute(
@@ -251,6 +256,12 @@ async def cleanup_stale_workers(
 
             return cleaned_count
 
+    except asyncpg.exceptions.InterfaceError as e:
+        if "pool is closing" in str(e):
+            logger.debug("Pool is closing, skipping stale worker cleanup")
+            return 0
+        logger.error(f"Failed to cleanup stale workers: {e}")
+        return 0
     except Exception as e:
         logger.error(f"Failed to cleanup stale workers: {e}")
         return 0

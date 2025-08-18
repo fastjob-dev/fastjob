@@ -110,7 +110,10 @@ def main():
         ),
         (
             "Infrastructure - Signal Handling & Graceful Shutdown",
-            ["tests/integration/infrastructure/test_signal_handling.py"],
+            [
+                "tests/integration/infrastructure/test_signal_handling.py",
+                "tests/integration/infrastructure/test_graceful_shutdown.py",
+            ],
         ),
         (
             "Infrastructure - Database URL Integration",

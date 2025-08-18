@@ -531,68 +531,81 @@ async def run_worker(
                             any_processed = False
 
                             # Use separate connection for job processing to avoid blocking LISTEN
-                            async with pool.acquire() as job_conn:
-                                # Process jobs efficiently - single query regardless of queue specification
-                                processed = await process_jobs(
-                                    job_conn, queues, heartbeat
-                                )
-                                if processed:
-                                    any_processed = True
+                            # Check if pool is closing before acquiring connection
+                            if pool._closing:
+                                logger.debug("Pool is closing, stopping worker")
+                                break
+                                
+                            try:
+                                async with pool.acquire() as job_conn:
+                                    # Process jobs efficiently - single query regardless of queue specification
+                                    processed = await process_jobs(
+                                        job_conn, queues, heartbeat
+                                    )
+                                    if processed:
+                                        any_processed = True
 
-                                # Run periodic cleanup of expired jobs
-                                current_time = time.time()
-                                if current_time - last_cleanup > cleanup_interval:
-                                    try:
-                                        # Clean up expired completed jobs if RESULT_TTL is set
-                                        from fastjob.settings import get_settings
+                                    # Run periodic cleanup of expired jobs
+                                    current_time = time.time()
+                                    if current_time - last_cleanup > cleanup_interval:
+                                        try:
+                                            # Clean up expired completed jobs if RESULT_TTL is set
+                                            from fastjob.settings import get_settings
 
-                                        settings = get_settings()
+                                            settings = get_settings()
 
-                                        if settings.result_ttl > 0:
-                                            cleaned = await job_conn.execute(
-                                                "DELETE FROM fastjob_jobs WHERE status = 'done' AND expires_at < NOW()"
-                                            )
-                                            cleaned_count = (
-                                                int(cleaned.split()[-1])
-                                                if cleaned
-                                                else 0
-                                            )
-                                            if cleaned_count > 0:
-                                                logger.debug(
-                                                    f"Cleaned up {cleaned_count} expired jobs"
+                                            if settings.result_ttl > 0:
+                                                cleaned = await job_conn.execute(
+                                                    "DELETE FROM fastjob_jobs WHERE status = 'done' AND expires_at < NOW()"
                                                 )
+                                                cleaned_count = (
+                                                    int(cleaned.split()[-1])
+                                                    if cleaned
+                                                    else 0
+                                                )
+                                                if cleaned_count > 0:
+                                                    logger.debug(
+                                                        f"Cleaned up {cleaned_count} expired jobs"
+                                                    )
 
-                                        # Clean up stale workers
-                                        await cleanup_stale_workers(
-                                            pool,
-                                            stale_threshold_seconds=get_settings().stale_worker_threshold,
-                                        )
+                                            # Clean up stale workers
+                                            await cleanup_stale_workers(
+                                                pool,
+                                                stale_threshold_seconds=get_settings().stale_worker_threshold,
+                                            )
 
-                                        last_cleanup = current_time
-                                    except Exception as cleanup_error:
-                                        logger.warning(
-                                            f"Cleanup failed: {cleanup_error}"
-                                        )
-                                        last_cleanup = (
-                                            current_time  # Prevent continuous retries
-                                        )
+                                            last_cleanup = current_time
+                                        except Exception as cleanup_error:
+                                            logger.warning(
+                                                f"Cleanup failed: {cleanup_error}"
+                                            )
+                                            last_cleanup = (
+                                                current_time  # Prevent continuous retries
+                                            )
 
-                            if not any_processed:
-                                # No jobs available, wait for NOTIFY with timeout
-                                try:
-                                    # Wait for notification with configurable timeout
-                                    await asyncio.wait_for(
-                                        notification_event.wait(),
-                                        timeout=get_settings().notification_timeout,
-                                    )
-                                    notification_event.clear()  # Reset for next notification
-                                    logger.debug("Received job notification")
-                                except asyncio.TimeoutError:
-                                    # Timeout is normal - allows periodic checks for scheduled jobs
-                                    logger.debug(
-                                        "No notifications, checking for scheduled jobs"
-                                    )
-                                    pass
+                                if not any_processed:
+                                    # No jobs available, wait for NOTIFY with timeout
+                                    try:
+                                        # Wait for notification with configurable timeout
+                                        await asyncio.wait_for(
+                                            notification_event.wait(),
+                                            timeout=get_settings().notification_timeout,
+                                        )
+                                        notification_event.clear()  # Reset for next notification
+                                        logger.debug("Received job notification")
+                                    except asyncio.TimeoutError:
+                                        # Timeout is normal - allows periodic checks for scheduled jobs
+                                        logger.debug(
+                                            "No notifications, checking for scheduled jobs"
+                                        )
+                                        pass
+
+                            except asyncpg.exceptions.InterfaceError as e:
+                                if "pool is closing" in str(e):
+                                    logger.debug("Pool is closing, stopping worker")
+                                    break
+                                else:
+                                    raise
 
                         except Exception as e:
                             logger.exception(f"Worker error: {e}")
@@ -601,10 +614,17 @@ async def run_worker(
                             )  # Error occurred, wait before retrying
 
                 finally:
-                    await listen_conn.remove_listener(
-                        "fastjob_new_job", notification_callback
-                    )
-                    await pool.release(listen_conn)
+                    try:
+                        await listen_conn.remove_listener(
+                            "fastjob_new_job", notification_callback
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to remove listener (likely pool closing): {e}")
+                    
+                    try:
+                        await pool.release(listen_conn)
+                    except Exception as e:
+                        logger.debug(f"Failed to release connection (likely pool closing): {e}")
 
             # Setup signal handlers for graceful shutdown
             from ..utils.signals import (
@@ -621,9 +641,8 @@ async def run_worker(
             try:
                 # Create a task that waits for shutdown signal
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
-                worker_task = asyncio.create_task(
-                    asyncio.gather(*tasks, return_exceptions=True)
-                )
+                # Don't create_task around gather since tasks are already tasks
+                worker_task = asyncio.gather(*tasks, return_exceptions=True)
 
                 # Wait for either workers to complete or shutdown signal
                 done, pending = await asyncio.wait(
