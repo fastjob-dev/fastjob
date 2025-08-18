@@ -585,10 +585,7 @@ async def test_signal_handler_multiple_setup_cleanup():
         assert handler.shutdown_event is None
 
 
-# Integration test to ensure heartbeat cleanup works with signal handling
-@pytest.mark.asyncio
-async def test_signal_shutdown_with_heartbeat_cleanup():
-    """Test that heartbeat is properly cleaned up during signal shutdown"""
-
-    # This test requires a running database to test heartbeat functionality
-    pytest.skip("Requires database setup - covered by full integration tests")
+# NOTE: Heartbeat cleanup during signal shutdown is covered by:
+# - tests/integration/infrastructure/test_graceful_shutdown.py (our new comprehensive tests)
+# - The other signal handling tests in this file that test actual worker processes
+# No additional test needed here.

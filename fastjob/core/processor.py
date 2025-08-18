@@ -531,9 +531,9 @@ async def run_worker(
                             any_processed = False
 
                             # Use separate connection for job processing to avoid blocking LISTEN
-                            # Check if pool is closing before acquiring connection
-                            if pool._closing:
-                                logger.debug("Pool is closing, stopping worker")
+                            # Check if shutdown has been requested
+                            if shutdown_event.is_set():
+                                logger.info("Shutdown requested, stopping worker")
                                 break
                                 
                             try:
@@ -592,7 +592,7 @@ async def run_worker(
                                             timeout=get_settings().notification_timeout,
                                         )
                                         notification_event.clear()  # Reset for next notification
-                                        logger.debug("Received job notification")
+                                        logger.info("Received job notification")
                                     except asyncio.TimeoutError:
                                         # Timeout is normal - allows periodic checks for scheduled jobs
                                         logger.debug(
@@ -618,13 +618,13 @@ async def run_worker(
                         await listen_conn.remove_listener(
                             "fastjob_new_job", notification_callback
                         )
-                    except Exception as e:
-                        logger.debug(f"Failed to remove listener (likely pool closing): {e}")
+                    except asyncpg.exceptions.InterfaceError as e:
+                        logger.info(f"Failed to remove listener (pool closing): {e}")
                     
                     try:
                         await pool.release(listen_conn)
-                    except Exception as e:
-                        logger.debug(f"Failed to release connection (likely pool closing): {e}")
+                    except asyncpg.exceptions.InterfaceError as e:
+                        logger.info(f"Failed to release connection (pool closing): {e}")
 
             # Setup signal handlers for graceful shutdown
             from ..utils.signals import (

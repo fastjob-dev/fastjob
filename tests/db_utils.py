@@ -43,10 +43,16 @@ async def drop_test_database():
 
 async def clear_table(pool: Pool):
     async with pool.acquire() as conn:
-        await conn.execute("TRUNCATE TABLE fastjob_jobs RESTART IDENTITY")
-        # Also clear the workers table if it exists (for heartbeat tests)
+        # Clear both tables with CASCADE to handle foreign key constraints
         try:
-            await conn.execute("TRUNCATE TABLE fastjob_workers RESTART IDENTITY")
+            await conn.execute("TRUNCATE TABLE fastjob_jobs, fastjob_workers RESTART IDENTITY CASCADE")
         except Exception:
-            # Table might not exist in older test databases, that's okay
-            pass
+            # Fallback to individual table clearing if the above fails
+            try:
+                await conn.execute("TRUNCATE TABLE fastjob_jobs RESTART IDENTITY")
+            except Exception:
+                pass
+            try:
+                await conn.execute("TRUNCATE TABLE fastjob_workers RESTART IDENTITY CASCADE")
+            except Exception:
+                pass
