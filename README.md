@@ -88,52 +88,6 @@ fastjob start
 
 **🚀 Same code, different behavior based on environment variables.**
 
-### **Alternative: Standalone Script**
-
-If you prefer a simple script approach, create `demo.py`:
-
-```python
-import asyncio
-import fastjob
-
-# 1. Decorate any async function
-@fastjob.job(retries=3)
-async def send_email(email: str, name: str):
-    print(f"📧 Sending to {name} at {email}")
-    await asyncio.sleep(1)  # Simulate work
-    print(f"✅ Sent!")
-
-async def main():
-    # 2. The DX Magic: Same code adapts to any environment
-    if fastjob.is_dev_mode():
-        fastjob.start_embedded_worker()
-        print("🔄 Dev mode: Jobs process instantly in your app")
-
-    # 3. Enqueue jobs anywhere
-    await fastjob.enqueue(send_email, email="alice@example.com", name="Alice")
-    await asyncio.sleep(3)  # Watch it work
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-**Development (embedded worker):**
-```bash
-export FASTJOB_DEV_MODE=true
-python demo.py
-```
-
-**Production (separate workers):**
-```bash
-# Your app runs normally (no FASTJOB_DEV_MODE)
-python demo.py
-
-# Separate terminal: dedicated workers
-fastjob start --concurrency=4
-```
-
-**🚀 Write once, run anywhere** - environment variables control worker behavior, your code stays the same.
-
 ## Troubleshooting
 
 ### **"Job not registered - moved to dead letter queue"**
