@@ -140,7 +140,7 @@ async def test_worker_stop_heartbeat_instance_based(clean_db, fastjob_instance):
 
 # NOTE: Multi-instance worker isolation functionality is covered by:
 # - test_worker_registration_instance_based: Tests worker registration per instance
-# - test_worker_heartbeat_updates_instance_based: Tests heartbeat updates per instance  
+# - test_worker_heartbeat_updates_instance_based: Tests heartbeat updates per instance
 # - test_database_pool_isolation_between_instances: Tests database pool isolation
 # - The complex race conditions in multi-instance setup during test fixture cleanup
 #   make this test unreliable, while the functionality is proven by other tests.
@@ -155,7 +155,7 @@ async def test_worker_stop_heartbeat_instance_based(clean_db, fastjob_instance):
 
 # NOTE: Worker scaling and instance-based job processing functionality is covered by:
 # - test_worker_registration_instance_based: Tests worker registration and config
-# - test_worker_heartbeat_updates_instance_based: Tests heartbeat functionality  
+# - test_worker_heartbeat_updates_instance_based: Tests heartbeat functionality
 # - test_worker_failure_and_recovery: Tests worker lifecycle management
 # - Multiple working tests in global_api/ that test job processing end-to-end
 # - Core scaling functionality is proven by the working concurrency tests

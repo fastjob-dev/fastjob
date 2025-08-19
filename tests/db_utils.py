@@ -45,7 +45,9 @@ async def clear_table(pool: Pool):
     async with pool.acquire() as conn:
         # Clear both tables with CASCADE to handle foreign key constraints
         try:
-            await conn.execute("TRUNCATE TABLE fastjob_jobs, fastjob_workers RESTART IDENTITY CASCADE")
+            await conn.execute(
+                "TRUNCATE TABLE fastjob_jobs, fastjob_workers RESTART IDENTITY CASCADE"
+            )
         except Exception:
             # Fallback to individual table clearing if the above fails
             try:
@@ -53,6 +55,8 @@ async def clear_table(pool: Pool):
             except Exception:
                 pass
             try:
-                await conn.execute("TRUNCATE TABLE fastjob_workers RESTART IDENTITY CASCADE")
+                await conn.execute(
+                    "TRUNCATE TABLE fastjob_workers RESTART IDENTITY CASCADE"
+                )
             except Exception:
                 pass

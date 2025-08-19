@@ -353,7 +353,7 @@ class FastJob:
         from .core.heartbeat import WorkerHeartbeat
         from .core.processor import process_jobs_with_registry
         from .utils.signals import GracefulSignalHandler
-        
+
         # Create worker heartbeat system
         heartbeat = WorkerHeartbeat(self._pool, queues, concurrency)
         await heartbeat.register_worker()
@@ -383,7 +383,7 @@ class FastJob:
                         if shutdown_event.is_set():
                             logger.info("Shutdown requested, stopping worker")
                             break
-                            
+
                         # Process jobs from all queues first
                         any_processed = False
 
@@ -402,6 +402,7 @@ class FastJob:
 
                                 # Run periodic cleanup of expired jobs
                                 import time
+
                                 current_time = time.time()
                                 if current_time - last_cleanup > cleanup_interval:
                                     try:
@@ -411,13 +412,20 @@ class FastJob:
                                                 "DELETE FROM fastjob_jobs WHERE status = 'done' AND expires_at < NOW()"
                                             )
                                             cleaned_count = (
-                                                int(cleaned.split()[-1]) if cleaned else 0
+                                                int(cleaned.split()[-1])
+                                                if cleaned
+                                                else 0
                                             )
                                             if cleaned_count > 0:
-                                                logger.debug(f"Cleaned up {cleaned_count} expired jobs")
+                                                logger.debug(
+                                                    f"Cleaned up {cleaned_count} expired jobs"
+                                                )
 
                                         # Clean up stale workers
-                                        from .core.heartbeat import cleanup_stale_workers
+                                        from .core.heartbeat import (
+                                            cleanup_stale_workers,
+                                        )
+
                                         await cleanup_stale_workers(
                                             self._pool,
                                             stale_threshold_seconds=self._settings.stale_worker_threshold,
@@ -425,8 +433,12 @@ class FastJob:
 
                                         last_cleanup = current_time
                                     except Exception as cleanup_error:
-                                        logger.warning(f"Cleanup failed: {cleanup_error}")
-                                        last_cleanup = current_time  # Prevent continuous retries
+                                        logger.warning(
+                                            f"Cleanup failed: {cleanup_error}"
+                                        )
+                                        last_cleanup = (
+                                            current_time  # Prevent continuous retries
+                                        )
 
                         except Exception as e:
                             if "pool is closing" in str(e):
@@ -447,7 +459,9 @@ class FastJob:
                                 logger.info("Received job notification")
                             except asyncio.TimeoutError:
                                 # Timeout is normal - allows periodic checks for scheduled jobs
-                                logger.debug("No notifications, checking for scheduled jobs")
+                                logger.debug(
+                                    "No notifications, checking for scheduled jobs"
+                                )
 
                     except Exception as e:
                         logger.exception(f"Worker error: {e}")
@@ -455,10 +469,12 @@ class FastJob:
 
             finally:
                 try:
-                    await listen_conn.remove_listener("fastjob_new_job", notification_callback)
+                    await listen_conn.remove_listener(
+                        "fastjob_new_job", notification_callback
+                    )
                 except asyncpg.exceptions.InterfaceError as e:
                     logger.debug(f"Failed to remove listener (pool closing): {e}")
-                
+
                 try:
                     await self._pool.release(listen_conn)
                 except asyncpg.exceptions.InterfaceError as e:
@@ -508,9 +524,8 @@ class FastJob:
 
             # Stop heartbeat system
             await heartbeat.stop_heartbeat()
-        
-        return True  # Jobs may have been processed during the session
 
+        return True  # Jobs may have been processed during the session
 
     # Job Management API
 

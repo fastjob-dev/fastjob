@@ -234,9 +234,10 @@ async def test_cli_worker():
     import fastjob
 
     assert fastjob.run_worker is not None
-    
+
     # Test that FastJob instances have run_worker method
     from fastjob import FastJob
+
     app = FastJob(database_url="postgresql://postgres@localhost/fastjob_test")
     assert app.run_worker is not None
 

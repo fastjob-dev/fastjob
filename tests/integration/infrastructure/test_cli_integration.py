@@ -289,7 +289,7 @@ async def test_cli_signal_handling():
         has_shutdown_message = any(
             keyword in combined_output.lower() for keyword in shutdown_keywords
         )
-        
+
         # Accept either shutdown message OR clean exit (returncode 0) as evidence of graceful shutdown
         assert has_shutdown_message or process.returncode == 0, (
             f"Expected graceful shutdown message OR clean exit, got returncode {process.returncode} "

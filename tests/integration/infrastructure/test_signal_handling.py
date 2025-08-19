@@ -206,8 +206,10 @@ if __name__ == "__main__":
                     "cleanup",
                     "graceful",
                 ]
-                has_shutdown_message = any(keyword in output.lower() for keyword in shutdown_keywords)
-                
+                has_shutdown_message = any(
+                    keyword in output.lower() for keyword in shutdown_keywords
+                )
+
                 # Accept either shutdown message OR clean exit as evidence of graceful shutdown
                 assert has_shutdown_message or process.returncode == 0, (
                     f"Expected graceful shutdown message OR clean exit, got returncode {process.returncode} "
@@ -270,8 +272,10 @@ if __name__ == "__main__":
                     "cleanup",
                     "graceful",
                 ]
-                has_shutdown_message = any(keyword in output.lower() for keyword in shutdown_keywords)
-                
+                has_shutdown_message = any(
+                    keyword in output.lower() for keyword in shutdown_keywords
+                )
+
                 # Accept either shutdown message OR clean exit as evidence of graceful shutdown
                 assert has_shutdown_message or process.returncode == 0, (
                     f"Expected graceful shutdown message OR clean exit, got returncode {process.returncode} "
@@ -398,8 +402,10 @@ if __name__ == "__main__":
                     "cleanup",
                     "graceful",
                 ]
-                has_shutdown_message = any(keyword in output.lower() for keyword in shutdown_keywords)
-                
+                has_shutdown_message = any(
+                    keyword in output.lower() for keyword in shutdown_keywords
+                )
+
                 # Accept either shutdown message OR clean exit as evidence of graceful shutdown
                 assert has_shutdown_message or process.returncode == 0, (
                     f"Expected graceful shutdown message OR clean exit, got returncode {process.returncode} "

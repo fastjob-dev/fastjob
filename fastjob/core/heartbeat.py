@@ -228,7 +228,7 @@ async def cleanup_stale_workers(
 
         stale_threshold_seconds = get_settings().stale_worker_threshold
 
-    try:            
+    try:
         async with pool.acquire() as conn:
             # Mark stale workers as stopped
             result = await conn.execute(

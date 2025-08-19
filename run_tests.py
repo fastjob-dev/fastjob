@@ -4,7 +4,7 @@ FastJob Test Runner - Runs tests in organized batches with API isolation
 
 This script runs tests in the new isolated structure:
 - Global API tests: Use fastjob.job, fastjob.enqueue, etc.
-- Instance API tests: Use app = FastJob(), app.job, etc.  
+- Instance API tests: Use app = FastJob(), app.job, etc.
 - Infrastructure tests: Test underlying systems (CLI, connections, etc.)
 - Unit tests: Test individual modules
 """
@@ -84,7 +84,6 @@ def main():
             "Global API - TTL & Job Cleanup",
             ["tests/integration/global_api/test_ttl_functionality.py"],
         ),
-        
         # INSTANCE API TESTS - Use app = FastJob(), app.job, etc.
         (
             "Instance API - Core Functionality",
@@ -98,7 +97,6 @@ def main():
             "Instance API - Worker Heartbeat Comprehensive",
             ["tests/integration/instance_api/test_worker_heartbeat_comprehensive.py"],
         ),
-        
         # INFRASTRUCTURE TESTS - Support both APIs
         (
             "Infrastructure - CLI Integration",
@@ -124,14 +122,13 @@ def main():
             ["tests/integration/infrastructure/test_connection_context.py"],
         ),
         (
-            "Infrastructure - LISTEN/NOTIFY Performance", 
+            "Infrastructure - LISTEN/NOTIFY Performance",
             ["tests/integration/infrastructure/test_listen_notify.py"],
         ),
         (
             "Infrastructure - Queue Processing Behavior",
             ["tests/integration/infrastructure/test_queue_processing_behavior.py"],
         ),
-        
         # UNIT TESTS
         (
             "Unit Tests - Core Modules",
